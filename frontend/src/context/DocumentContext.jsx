@@ -338,6 +338,7 @@ export function DocumentProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useDocuments() {
   const context = useContext(DocumentContext);
   if (!context) {

@@ -12,6 +12,25 @@ export default function DocumentVersionsPage() {
   } = useDocuments();
 
   const [supersedingDoc, setSupersedingDoc] = useState(null);
+  const [targetDocForRevision, setTargetDocForRevision] = useState(null);
+  const [revisionInitialFile, setRevisionInitialFile] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleTriggerUploadRevision = (doc) => {
+    setTargetDocForRevision(doc);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleRevisionFileSelected = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      setRevisionInitialFile(file);
+      setSupersedingDoc(targetDocForRevision);
+    }
+  };
 
   // Drag & Drop State for Replaced/Historical Versions
   const [draggedDocId, setDraggedDocId] = useState(null);
@@ -544,7 +563,7 @@ export default function DocumentVersionsPage() {
 
                     <button
                       type="button"
-                      onClick={() => setSupersedingDoc(activeDoc)}
+                      onClick={() => handleTriggerUploadRevision(activeDoc)}
                       className="px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-on-primary text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-xs transition-transform hover:scale-[1.02] shrink-0"
                     >
                       <span className="material-symbols-outlined text-[17px]">upgrade</span>
@@ -730,12 +749,14 @@ export default function DocumentVersionsPage() {
                                       return (
                                         <span
                                           key={t.id || tIdx}
-                                          className="px-2.5 py-0.5 border rounded-full text-xs whitespace-nowrap select-none font-semibold flex items-center gap-1.5 bg-surface-container text-on-surface shadow-2xs"
+                                          className="px-2.5 py-0.5 rounded-full text-xs whitespace-nowrap select-none font-semibold flex items-center gap-1.5 bg-surface-container text-on-surface shadow-2xs"
                                           style={{
                                             borderColor: tagHex,
+                                            borderWidth: '1.5px',
+                                            borderStyle: 'solid',
                                           }}
                                         >
-                                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: tagHex }}></span>
+                                          <span className="w-2 h-2 min-w-[8px] min-h-[8px] rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: tagHex }}></span>
                                           <span className="text-on-surface">{t.label}</span>
                                         </span>
                                       );
@@ -784,10 +805,24 @@ export default function DocumentVersionsPage() {
         )}
       </div>
 
+      {/* Hidden file input to immediately trigger native OS file explorer */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleRevisionFileSelected}
+        accept=".pdf,.xlsx,.xls,.docx,.doc"
+        className="hidden"
+      />
+
       {supersedingDoc && (
         <SupersedeModal
           doc={supersedingDoc}
-          onClose={() => setSupersedingDoc(null)}
+          initialFile={revisionInitialFile}
+          onClose={() => {
+            setSupersedingDoc(null);
+            setRevisionInitialFile(null);
+            setTargetDocForRevision(null);
+          }}
         />
       )}
     </div>

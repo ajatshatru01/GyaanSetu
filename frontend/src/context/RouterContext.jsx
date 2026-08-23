@@ -35,6 +35,7 @@ export function RouterProvider({ children }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useRouter() {
   const context = useContext(RouterContext);
   if (!context) {

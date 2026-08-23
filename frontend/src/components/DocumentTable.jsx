@@ -610,12 +610,14 @@ export default function DocumentTable() {
                                 return (
                                   <span
                                     key={t.id || tIdx}
-                                    className="px-2.5 py-0.5 border rounded-full text-xs whitespace-nowrap select-none font-semibold flex items-center gap-1.5 bg-surface-container text-on-surface shadow-2xs"
+                                    className="px-2.5 py-0.5 rounded-full text-xs whitespace-nowrap select-none font-semibold flex items-center gap-1.5 bg-surface-container text-on-surface shadow-2xs"
                                     style={{
                                       borderColor: tagHex,
+                                      borderWidth: '1.5px',
+                                      borderStyle: 'solid',
                                     }}
                                   >
-                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: tagHex }}></span>
+                                    <span className="w-2 h-2 min-w-[8px] min-h-[8px] rounded-full shrink-0 shadow-2xs" style={{ backgroundColor: tagHex }}></span>
                                     <span className="text-on-surface">{t.label}</span>
                                   </span>
                                 );

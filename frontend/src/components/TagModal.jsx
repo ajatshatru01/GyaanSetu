@@ -3,15 +3,15 @@ import { createPortal } from 'react-dom';
 import { useDocuments } from '../context/DocumentContext';
 
 const PRESET_COLORS = [
-  { name: 'Sky Cyan', bgClass: 'bg-transparent', borderClass: 'border-[#016879]', textClass: 'text-[#016879]', hex: '#016879' },
-  { name: 'Soft Blue', bgClass: 'bg-transparent', borderClass: 'border-[#00629e]', textClass: 'text-[#00629e]', hex: '#00629e' },
-  { name: 'Amber Gold', bgClass: 'bg-transparent', borderClass: 'border-[#b87d00]', textClass: 'text-[#b87d00]', hex: '#b87d00' },
-  { name: 'Peach Orange', bgClass: 'bg-transparent', borderClass: 'border-[#8a5100]', textClass: 'text-[#8a5100]', hex: '#8a5100' },
-  { name: 'Ruby Crimson', bgClass: 'bg-transparent', borderClass: 'border-[#ba1a1a]', textClass: 'text-[#ba1a1a]', hex: '#ba1a1a' },
-  { name: 'Emerald Green', bgClass: 'bg-transparent', borderClass: 'border-[#107C41]', textClass: 'text-[#107C41]', hex: '#107C41' },
-  { name: 'Royal Purple', bgClass: 'bg-transparent', borderClass: 'border-[#7c3aed]', textClass: 'text-[#7c3aed]', hex: '#7c3aed' },
+  { name: 'Teal Cyan', bgClass: 'bg-transparent', borderClass: 'border-[#0e7490]', textClass: 'text-[#0e7490]', hex: '#0e7490' },
+  { name: 'Royal Blue', bgClass: 'bg-transparent', borderClass: 'border-[#1d4ed8]', textClass: 'text-[#1d4ed8]', hex: '#1d4ed8' },
+  { name: 'Amber Gold', bgClass: 'bg-transparent', borderClass: 'border-[#d97706]', textClass: 'text-[#d97706]', hex: '#d97706' },
+  { name: 'Vibrant Orange', bgClass: 'bg-transparent', borderClass: 'border-[#c2410c]', textClass: 'text-[#c2410c]', hex: '#c2410c' },
+  { name: 'Ruby Crimson', bgClass: 'bg-transparent', borderClass: 'border-[#dc2626]', textClass: 'text-[#dc2626]', hex: '#dc2626' },
+  { name: 'Emerald Green', bgClass: 'bg-transparent', borderClass: 'border-[#15803d]', textClass: 'text-[#15803d]', hex: '#15803d' },
+  { name: 'Royal Purple', bgClass: 'bg-transparent', borderClass: 'border-[#7e22ce]', textClass: 'text-[#7e22ce]', hex: '#7e22ce' },
   { name: 'Deep Indigo', bgClass: 'bg-transparent', borderClass: 'border-[#4338ca]', textClass: 'text-[#4338ca]', hex: '#4338ca' },
-  { name: 'Rose Pink', bgClass: 'bg-transparent', borderClass: 'border-[#e11d48]', textClass: 'text-[#e11d48]', hex: '#e11d48' },
+  { name: 'Rose Red', bgClass: 'bg-transparent', borderClass: 'border-[#e11d48]', textClass: 'text-[#e11d48]', hex: '#e11d48' },
 ];
 
 export default function TagModal({ onClose, onCreated }) {

@@ -6,8 +6,6 @@ import { exportDocumentVaultZip } from '../utils/zipExporter';
 export default function SystemDiagnosticsPage() {
   const { documents, departments } = useDocuments();
   const [isExporting, setIsExporting] = useState(false);
-  const [exportSuccess, setExportSuccess] = useState(false);
-  const [exportedScopeName, setExportedScopeName] = useState('All');
 
   // Export Scope Selection Modal State
   const [showExportModal, setShowExportModal] = useState(false);
@@ -26,18 +24,14 @@ export default function SystemDiagnosticsPage() {
   // Trigger export of clean, self-contained Document Vault (.zip)
   const handleExecuteExport = async () => {
     setIsExporting(true);
-    setExportSuccess(false);
+    setShowExportModal(false);
 
     try {
       const scopeDept = exportScope === 'All' ? 'All' : selectedDept;
       await exportDocumentVaultZip(documents, scopeDept);
-      setIsExporting(false);
-      setShowExportModal(false);
-      setExportedScopeName(scopeDept);
-      setExportSuccess(true);
-      setTimeout(() => setExportSuccess(false), 6000);
     } catch (err) {
       console.error('Failed to export vault archive:', err);
+    } finally {
       setIsExporting(false);
     }
   };
@@ -123,7 +117,7 @@ export default function SystemDiagnosticsPage() {
         <div className="flex items-center justify-between">
           <h2 className="text-title-md font-bold text-primary flex items-center gap-2">
             <span className="material-symbols-outlined text-secondary text-[22px]">database</span>
-            Database &amp; Vector Engine (PostgreSQL + pgvector)
+            Database &amp; Vector Engine
           </h2>
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs">
@@ -252,29 +246,29 @@ export default function SystemDiagnosticsPage() {
             type="button"
             onClick={() => setShowExportModal(true)}
             disabled={isExporting}
-            className="px-5 py-3 rounded-xl bg-primary hover:bg-primary-container disabled:opacity-50 text-on-primary font-semibold text-body-sm transition-all flex items-center gap-2 shadow-md cursor-pointer hover:scale-[1.02]"
+            className={`px-5 py-3 rounded-xl font-semibold text-body-sm transition-all flex items-center gap-2.5 shadow-md ${
+              isExporting
+                ? 'bg-surface-container-high text-on-surface-variant/60 border border-outline-variant/60 cursor-not-allowed shadow-none'
+                : 'bg-primary hover:bg-primary-container text-on-primary cursor-pointer hover:scale-[1.02]'
+            }`}
           >
-            <span className={`material-symbols-outlined text-[20px] ${isExporting ? 'animate-bounce' : ''}`}>
-              package_2
-            </span>
-            {isExporting ? 'Generating Document Vault (.zip)...' : 'Export Document Vault (.zip)'}
+            {isExporting ? (
+              <>
+                <span className="material-symbols-outlined text-[20px] animate-spin text-secondary">
+                  progress_activity
+                </span>
+                <span>Exporting Document Vault (.zip)...</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-[20px]">
+                  package_2
+                </span>
+                <span>Export Document Vault (.zip)</span>
+              </>
+            )}
           </button>
         </div>
-
-        {/* Export Feedback Banner */}
-        {exportSuccess && (
-          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-body-sm flex items-center gap-3 animate-in fade-in">
-            <span className="material-symbols-outlined text-[22px] text-emerald-600">check_circle</span>
-            <div>
-              <strong className="font-semibold">
-                {exportedScopeName === 'All' ? 'Full Document Vault (.zip)' : `${exportedScopeName} Vault (.zip)`} Exported Successfully!
-              </strong>
-              <p className="text-xs text-emerald-700 mt-0.5">
-                A clean, self-contained archive ({exportedScopeName === 'All' ? 'All Departments' : `Department: ${exportedScopeName}`}) with <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded">catalog_manifest.csv</code> (Excel-ready), <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded">replacement_lineage.json</code>, and all active/historical documents has been downloaded.
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Export Scope Selection Modal */}

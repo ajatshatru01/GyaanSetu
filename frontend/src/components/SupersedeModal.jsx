@@ -4,19 +4,17 @@ import { useDocuments } from '../context/DocumentContext';
 import { documentService } from '../services/documentService';
 import TagModal from './TagModal';
 
-export default function SupersedeModal({ doc, onClose }) {
+export default function SupersedeModal({ doc, initialFile, onClose }) {
   const {
     departments,
     tags,
-    handleUpdateDocumentStatus,
     handleSupersedeWithNewVersion,
     hasSameNameAndVersion,
     hasDuplicateFileName,
-    activeUpload
   } = useDocuments();
 
-  const [replacementFile, setReplacementFile] = useState(null);
-  const [selectedDept, setSelectedDept] = useState(doc?.department || departments[0] || 'Rolling Stock');
+  const [replacementFile, setReplacementFile] = useState(initialFile || null);
+  const [selectedDept] = useState(doc?.department || departments?.[0] || 'Rolling Stock');
   const [selectedTags, setSelectedTags] = useState(doc?.tags || []);
   const [versionNum, setVersionNum] = useState(() => {
     const next = documentService.getNextVersion(doc?.version || 'v1.0');
@@ -34,11 +32,6 @@ export default function SupersedeModal({ doc, onClose }) {
       setError('');
       setReplacementFile(file);
     }
-  };
-
-  const handleJustMarkOlder = async () => {
-    await handleUpdateDocumentStatus(doc.id, 'Older Version');
-    onClose();
   };
 
   const handleUploadReplacement = (e) => {
@@ -204,50 +197,33 @@ export default function SupersedeModal({ doc, onClose }) {
             </div>
           </div>
         ) : !replacementFile ? (
-          /* Step 1: Option Selection (Upload New Version vs Already Uploaded) */
-          <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              {/* Option 1: Upload New Replacement */}
+          /* Direct File Browse Area if no file is selected */
+          <div className="flex flex-col gap-3 py-2">
+            <div
+              onClick={() => fileInputRef.current && fileInputRef.current.click()}
+              className="border-2 border-dashed border-outline-variant hover:border-primary rounded-xl p-8 flex flex-col items-center justify-center text-center gap-3 cursor-pointer bg-surface-container-low hover:bg-surface-container transition-all"
+            >
+              <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                <span className="material-symbols-outlined text-[26px]">upload_file</span>
+              </div>
+              <div>
+                <h4 className="text-body-md font-bold text-primary">Select Replacement Document</h4>
+                <p className="text-label-sm text-on-surface-variant mt-0.5">Click to browse (.pdf, .xlsx, .docx)</p>
+              </div>
+            </div>
+            {error && <span className="text-error text-label-sm text-center">{error}</span>}
+            <div className="flex items-center justify-end pt-2 border-t border-outline-variant/60">
               <button
                 type="button"
-                disabled={Boolean(activeUpload)}
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                className="p-4 rounded-xl border border-secondary/30 bg-secondary/5 hover:bg-secondary/10 hover:border-secondary transition-all text-left flex flex-col justify-between gap-2 group cursor-pointer shadow-2xs"
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-body-sm text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
               >
-                <div className="flex items-center justify-between w-full">
-                  <div className="w-9 h-9 rounded-lg bg-secondary/15 text-secondary flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <span className="material-symbols-outlined text-[22px]">upload_file</span>
-                  </div>
-                  <span className="material-symbols-outlined text-secondary text-[18px] opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all">arrow_forward</span>
-                </div>
-                <div>
-                  <h4 className="text-body-sm font-bold text-primary">Upload New Revision</h4>
-                  <p className="text-label-sm text-on-surface-variant mt-0.5">Upload a revised file; current document will become an older version automatically.</p>
-                </div>
-              </button>
-
-              {/* Option 2: Just Mark as Older Version */}
-              <button
-                type="button"
-                onClick={handleJustMarkOlder}
-                className="p-4 rounded-xl border border-outline-variant/60 bg-surface-container-low hover:bg-amber-500/10 hover:border-amber-500/50 transition-all text-left flex flex-col justify-between gap-2 group cursor-pointer shadow-2xs"
-              >
-                <div className="flex items-center justify-between w-full">
-                  <div className="w-9 h-9 rounded-lg bg-amber-500/15 text-amber-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                    <span className="material-symbols-outlined text-[22px]">history</span>
-                  </div>
-                  <span className="material-symbols-outlined text-amber-700 text-[18px] opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all">check</span>
-                </div>
-                <div>
-                  <h4 className="text-body-sm font-bold text-primary">Already Uploaded</h4>
-                  <p className="text-label-sm text-on-surface-variant mt-0.5">Directly mark this document as an older version without uploading a new file.</p>
-                </div>
+                Cancel
               </button>
             </div>
-            {error && <span className="text-error text-label-sm mt-1">{error}</span>}
           </div>
         ) : (
-          /* Step 2: Upload Form - Exact same layout as standard UploadModal */
+          /* Upload Form - Exact same layout as standard UploadModal */
           <form onSubmit={handleUploadReplacement} className="flex flex-col gap-4">
             {/* Selected File Card */}
             <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/40 flex items-center gap-3">
@@ -261,10 +237,15 @@ export default function SupersedeModal({ doc, onClose }) {
                   </h4>
                   <button
                     type="button"
-                    onClick={() => setReplacementFile(null)}
-                    className="text-label-sm text-on-surface-variant hover:text-error cursor-pointer whitespace-nowrap"
+                    onClick={() => {
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = '';
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    className="text-label-sm text-secondary hover:text-primary font-semibold cursor-pointer whitespace-nowrap"
                   >
-                    Change
+                    Change File
                   </button>
                 </div>
                 <div className="flex items-center gap-2 text-label-sm text-on-surface-variant mt-0.5">
@@ -361,10 +342,10 @@ export default function SupersedeModal({ doc, onClose }) {
             <div className="flex items-center justify-end gap-3 mt-2 pt-3 border-t border-outline-variant/60">
               <button
                 type="button"
-                onClick={() => setReplacementFile(null)}
+                onClick={onClose}
                 className="px-4 py-2 rounded-lg text-body-sm font-medium text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
               >
-                Back
+                Cancel
               </button>
               <button
                 type="submit"
@@ -375,19 +356,6 @@ export default function SupersedeModal({ doc, onClose }) {
               </button>
             </div>
           </form>
-        )}
-
-        {/* Modal Outer Footer for Option Chooser */}
-        {!replacementFile && (
-          <div className="flex items-center justify-end pt-2 border-t border-outline-variant/60">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-body-sm text-on-surface-variant hover:bg-surface-container transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-          </div>
         )}
       </div>
 

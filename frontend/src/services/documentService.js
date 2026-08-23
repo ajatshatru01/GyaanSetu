@@ -16,11 +16,11 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_TAGS = [
-  { id: 'tender_gcc', label: 'Tender / GCC', bgClass: 'bg-transparent', borderClass: 'border-[#00629e]', textClass: 'text-[#00629e]', hex: '#00629e' },
-  { id: 'cmrs_safety', label: 'CMRS Safety', bgClass: 'bg-transparent', borderClass: 'border-[#016879]', textClass: 'text-[#016879]', hex: '#016879' },
-  { id: 'high_priority', label: 'High Priority', bgClass: 'bg-transparent', borderClass: 'border-[#ba1a1a]', textClass: 'text-[#ba1a1a]', hex: '#ba1a1a' },
-  { id: 'monsoon_sop', label: 'Monsoon SOP', bgClass: 'bg-transparent', borderClass: 'border-[#b87d00]', textClass: 'text-[#b87d00]', hex: '#b87d00' },
-  { id: 'vendor_sla', label: 'Vendor SLA', bgClass: 'bg-transparent', borderClass: 'border-[#8a5100]', textClass: 'text-[#8a5100]', hex: '#8a5100' },
+  { id: 'tender_gcc', label: 'Tender / GCC', bgClass: 'bg-transparent', borderClass: 'border-[#1d4ed8]', textClass: 'text-[#1d4ed8]', hex: '#1d4ed8' },
+  { id: 'cmrs_safety', label: 'CMRS Safety', bgClass: 'bg-transparent', borderClass: 'border-[#0e7490]', textClass: 'text-[#0e7490]', hex: '#0e7490' },
+  { id: 'high_priority', label: 'High Priority', bgClass: 'bg-transparent', borderClass: 'border-[#dc2626]', textClass: 'text-[#dc2626]', hex: '#dc2626' },
+  { id: 'monsoon_sop', label: 'Monsoon SOP', bgClass: 'bg-transparent', borderClass: 'border-[#d97706]', textClass: 'text-[#d97706]', hex: '#d97706' },
+  { id: 'vendor_sla', label: 'Vendor SLA', bgClass: 'bg-transparent', borderClass: 'border-[#c2410c]', textClass: 'text-[#c2410c]', hex: '#c2410c' },
 ];
 
 const DEPARTMENTS = [
@@ -168,7 +168,24 @@ export const documentService = {
         localStorage.setItem(STORAGE_KEYS.TAGS, JSON.stringify(DEFAULT_TAGS));
         return DEFAULT_TAGS;
       }
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      // Normalize any older or low-contrast colors to vivid, high-contrast palette
+      const normalized = parsed.map(tag => {
+        if (tag.hex === '#8a5100' || tag.id === 'vendor_sla') {
+          return { ...tag, hex: '#c2410c', textClass: 'text-[#c2410c]', borderClass: 'border-[#c2410c]' };
+        }
+        if (tag.hex === '#00629e') {
+          return { ...tag, hex: '#1d4ed8', textClass: 'text-[#1d4ed8]', borderClass: 'border-[#1d4ed8]' };
+        }
+        if (tag.hex === '#ba1a1a') {
+          return { ...tag, hex: '#dc2626', textClass: 'text-[#dc2626]', borderClass: 'border-[#dc2626]' };
+        }
+        if (tag.hex === '#b87d00') {
+          return { ...tag, hex: '#d97706', textClass: 'text-[#d97706]', borderClass: 'border-[#d97706]' };
+        }
+        return tag;
+      });
+      return normalized;
     } catch (err) {
       console.error('Error loading tags:', err);
       return DEFAULT_TAGS;

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 
 const MOCK_CURRENT_ONLY_ANSWER = `Based on the active Metro Engineering Manuals (SOP-RS-2026-Rev3) and CMRS Safety Circular 14/2025:
 
@@ -6,9 +6,7 @@ const MOCK_CURRENT_ONLY_ANSWER = `Based on the active Metro Engineering Manuals 
 - **Permissible Cant Deficiency**: On mainline tracks under 25 kV AC OHE traction, the standard cant deficiency is capped at **100 mm** for standard BG/SG Metro rolling stock.
 - **Speed & Turnout Limitations**: For operation over curved turnouts (1 in 12 or 1 in 8.5), the maximum allowable cant deficiency shall not exceed **75 mm** unless special dispensation is issued by RDSO.
 - **Inspection Protocol**: Ultrasonic flaw detection (USFD) and pantograph contact force measurements must be performed bi-weekly during monsoon conditions.
-- **Interlocking & Fail-Safe Integration**: All track circuit clearance telemetry must integrate with the CBTC ATS server to enforce automatic emergency braking (EB) upon threshold violation.
-
-> **Compliance Note**: All extracted parameters verified against active current releases in the GyanSetu knowledge store with no superseded circular conflicts.`;
+- **Interlocking & Fail-Safe Integration**: All track circuit clearance telemetry must integrate with the CBTC ATS server to enforce automatic emergency braking (EB) upon threshold violation.`;
 
 const MOCK_ALL_VERSIONS_ANSWER = `Based on a cross-comparison of both Current Active standards and Historical Revisions in the knowledge base:
 
@@ -316,15 +314,15 @@ export default function SetuSearchPage() {
             {/* Suggested Queries */}
             <div className="flex flex-col gap-2.5">
               <span className="text-label-sm font-semibold uppercase text-on-surface-variant tracking-wider">Suggested Queries</span>
-              <div className="flex flex-wrap gap-2.5">
+              <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 scrollbar-thin">
                 {SAMPLE_PROMPTS.map((prompt, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => handleSearch(prompt)}
-                    className="px-3.5 py-2 bg-surface hover:bg-surface-container-high border border-outline-variant/60 rounded-xl text-body-sm text-on-surface text-left transition-all cursor-pointer flex items-center gap-2 shadow-2xs hover:border-secondary/60 hover:scale-[1.01]"
+                    className="px-3.5 py-2 bg-surface hover:bg-surface-container-high border border-outline-variant/60 rounded-xl text-body-sm text-on-surface text-left transition-all cursor-pointer flex items-center gap-2 shadow-2xs hover:border-secondary/60 shrink-0 whitespace-nowrap"
                   >
-                    <span className="material-symbols-outlined text-secondary text-[16px]">help_outline</span>
+                    <span className="material-symbols-outlined text-secondary text-[16px] shrink-0">help_outline</span>
                     <span>{prompt}</span>
                   </button>
                 ))}
@@ -491,16 +489,16 @@ export default function SetuSearchPage() {
               {/* Quick Sample Follow-ups */}
               <div className="flex flex-col gap-2">
                 <span className="text-label-sm font-semibold uppercase text-on-surface-variant tracking-wider">Suggested Follow-ups</span>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
                   {SAMPLE_PROMPTS.map((prompt, idx) => (
                     <button
                       key={idx}
                       type="button"
                       disabled={Boolean(activeStreamingId)}
                       onClick={() => handleSearch(prompt)}
-                      className="px-3.5 py-1.5 bg-surface hover:bg-surface-container-high border border-outline-variant/60 rounded-xl text-body-sm text-on-surface text-left transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs hover:border-secondary/60 hover:scale-[1.01]"
+                      className="px-3.5 py-1.5 bg-surface hover:bg-surface-container-high border border-outline-variant/60 rounded-xl text-body-sm text-on-surface text-left transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs hover:border-secondary/60 shrink-0 whitespace-nowrap"
                     >
-                      <span className="material-symbols-outlined text-secondary text-[16px]">help_outline</span>
+                      <span className="material-symbols-outlined text-secondary text-[16px] shrink-0">help_outline</span>
                       <span>{prompt}</span>
                     </button>
                   ))}
