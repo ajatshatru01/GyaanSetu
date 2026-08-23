@@ -32,86 +32,7 @@ const DEPARTMENTS = [
   'Power & Traction',
 ];
 
-const DEFAULT_DOCUMENTS = [
-  {
-    id: 'doc_pantograph_v3',
-    lineageId: 'lineage_pantograph',
-    name: 'Pantograph_Inspection_2026_Rev3.pdf',
-    department: 'Rolling Stock',
-    version: 'v3.0',
-    docStatus: 'Current',
-    tags: [
-      { id: 'cmrs_safety', label: 'CMRS Safety', bgClass: 'bg-transparent', borderClass: 'border-[#016879]', textClass: 'text-[#016879]', hex: '#016879' },
-      { id: 'high_priority', label: 'High Priority', bgClass: 'bg-transparent', borderClass: 'border-[#ba1a1a]', textClass: 'text-[#ba1a1a]', hex: '#ba1a1a' }
-    ],
-    status: { label: 'Indexed (OCR)', type: 'secondary' },
-    icon: { name: 'picture_as_pdf', color: 'text-error' },
-    uploadedAt: '2026-01-10T10:30:00.000Z',
-    size: '4.2 MB',
-    supersedes: 'doc_pantograph_v2'
-  },
-  {
-    id: 'doc_pantograph_v2',
-    lineageId: 'lineage_pantograph',
-    name: 'Pantograph_Inspection_2024_Rev2.pdf',
-    department: 'Rolling Stock',
-    version: 'v2.0',
-    docStatus: 'Older Version',
-    tags: [
-      { id: 'cmrs_safety', label: 'CMRS Safety', bgClass: 'bg-transparent', borderClass: 'border-[#016879]', textClass: 'text-[#016879]', hex: '#016879' }
-    ],
-    status: { label: 'Indexed (OCR)', type: 'secondary' },
-    icon: { name: 'picture_as_pdf', color: 'text-error' },
-    uploadedAt: '2024-03-14T14:15:00.000Z',
-    size: '3.8 MB',
-    supersedes: 'doc_pantograph_v1'
-  },
-  {
-    id: 'doc_pantograph_v1',
-    lineageId: 'lineage_pantograph',
-    name: 'SOP_Rolling_Stock_Pantograph_2022.pdf',
-    department: 'Rolling Stock',
-    version: 'v1.0',
-    docStatus: 'Older Version',
-    tags: [
-      { id: 'cmrs_safety', label: 'CMRS Safety', bgClass: 'bg-transparent', borderClass: 'border-[#016879]', textClass: 'text-[#016879]', hex: '#016879' }
-    ],
-    status: { label: 'Indexed (OCR)', type: 'secondary' },
-    icon: { name: 'picture_as_pdf', color: 'text-error' },
-    uploadedAt: '2022-08-05T09:00:00.000Z',
-    size: '3.1 MB'
-  },
-  {
-    id: 'doc_cbtc_sig_v2',
-    lineageId: 'lineage_cbtc_sig',
-    name: 'CBTC_Signaling_Interlocking_Spec_2026.docx',
-    department: 'Signaling',
-    version: 'v2.1',
-    docStatus: 'Current',
-    tags: [
-      { id: 'tender_gcc', label: 'Tender / GCC', bgClass: 'bg-transparent', borderClass: 'border-[#00629e]', textClass: 'text-[#00629e]', hex: '#00629e' }
-    ],
-    status: { label: 'Indexed (Docs)', type: 'secondary' },
-    icon: { name: 'description', color: 'text-[#2B579A]' },
-    uploadedAt: '2026-02-01T11:45:00.000Z',
-    size: '2.4 MB'
-  },
-  {
-    id: 'doc_cbtc_sig_v1',
-    lineageId: 'lineage_cbtc_sig',
-    name: 'Signaling_Interlocking_Baseline_2023.docx',
-    department: 'Signaling',
-    version: 'v1.0',
-    docStatus: 'Older Version',
-    tags: [
-      { id: 'tender_gcc', label: 'Tender / GCC', bgClass: 'bg-transparent', borderClass: 'border-[#00629e]', textClass: 'text-[#00629e]', hex: '#00629e' }
-    ],
-    status: { label: 'Indexed (Docs)', type: 'secondary' },
-    icon: { name: 'description', color: 'text-[#2B579A]' },
-    uploadedAt: '2023-11-20T16:20:00.000Z',
-    size: '1.9 MB'
-  }
-];
+const DEFAULT_DOCUMENTS = [];
 
 export const documentService = {
   // Fetch all documents
@@ -297,6 +218,24 @@ export const documentService = {
       return true;
     } catch (err) {
       console.error('Error deleting tag:', err);
+      return false;
+    }
+  },
+
+  // Update document tags
+  async updateDocumentTags(docId, newTags) {
+    try {
+      const docs = await this.getDocuments();
+      const updatedDocs = docs.map(doc => {
+        if (doc.id === docId) {
+          return { ...doc, tags: newTags };
+        }
+        return doc;
+      });
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updatedDocs));
+      return true;
+    } catch (err) {
+      console.error('Error updating document tags:', err);
       return false;
     }
   },

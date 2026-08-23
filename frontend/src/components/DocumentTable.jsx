@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useDocuments } from '../context/DocumentContext';
 import TagModal from './TagModal';
 
@@ -15,6 +16,7 @@ export default function DocumentTable() {
     clearTagFilters,
     handleDeleteDocument,
     handleUpdateDocumentVersion,
+    handleUpdateDocumentTags,
   } = useDocuments();
 
   const [showTagModal, setShowTagModal] = useState(false);
@@ -23,6 +25,15 @@ export default function DocumentTable() {
   const [versionError, setVersionError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
+
+  // Inline Tag Assignment Popover State
+  const [activeTagPopoverDocId, setActiveTagPopoverDocId] = useState(null);
+  const tagPopoverRef = useRef(null);
+
+  // Delete Confirmation & Fake RAG Purge States (~2s)
+  const [deletingDoc, setDeletingDoc] = useState(null);
+  const [isPurging, setIsPurging] = useState(false);
+  const [purgeStage, setPurgeStage] = useState('');
 
   // Date Filter States
   const [datePreset, setDatePreset] = useState('all'); // 'all' | 'today' | '7days' | '30days' | 'custom'
@@ -37,12 +48,15 @@ export default function DocumentTable() {
       if (datePickerRef.current && !datePickerRef.current.contains(e.target)) {
         setShowDatePicker(false);
       }
+      if (tagPopoverRef.current && !tagPopoverRef.current.contains(e.target)) {
+        setActiveTagPopoverDocId(null);
+      }
     }
-    if (showDatePicker) {
+    if (showDatePicker || activeTagPopoverDocId) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showDatePicker]);
+  }, [showDatePicker, activeTagPopoverDocId]);
 
   // Primary Department tabs matching standard metro engineering departments
   const CORE_DEPT_TABS = ['All', 'Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'];
@@ -158,6 +172,40 @@ export default function DocumentTable() {
       setEditingVersionId(null);
       setVersionError('');
     }
+  };
+
+  // Toggle tag for a specific document inline
+  const toggleDocTag = async (doc, tag) => {
+    const currentTags = doc.tags || [];
+    const exists = currentTags.some(t => t.id === tag.id);
+    const newTags = exists
+      ? currentTags.filter(t => t.id !== tag.id)
+      : [...currentTags, tag];
+    await handleUpdateDocumentTags(doc.id, newTags);
+  };
+
+  // Delete Confirmation and RAG Purge Handlers
+  const initiateDelete = (doc) => {
+    setDeletingDoc(doc);
+    setIsPurging(false);
+    setPurgeStage('');
+  };
+
+  const handleConfirmPurgeDelete = async () => {
+    if (!deletingDoc) return;
+    setIsPurging(true);
+    setPurgeStage('Unlinking document chunks from OCR layout cache...');
+
+    setTimeout(() => {
+      setPurgeStage('Flushing vector embeddings from pgvector database...');
+    }, 900);
+
+    setTimeout(async () => {
+      await handleDeleteDocument(deletingDoc.id);
+      setIsPurging(false);
+      setDeletingDoc(null);
+      setPurgeStage('');
+    }, 2000);
   };
 
   const getDateFilterLabel = () => {
@@ -552,37 +600,109 @@ export default function DocumentTable() {
                         </div>
                       </td>
 
-                      {/* 6. Tags (Informational Display) */}
+                      {/* 6. Tags (Interactive Inline Assignment & Display) */}
                       <td className="px-5 py-4.5">
-                        {doc.tags && doc.tags.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5">
-                            {doc.tags.map((t, tIdx) => {
-                              const tagHex = t.hex || '#016879';
-                              return (
-                                <span
-                                  key={t.id || tIdx}
-                                  className="px-2.5 py-0.5 border rounded-full text-xs whitespace-nowrap select-none font-semibold flex items-center gap-1.5 bg-surface-container text-on-surface shadow-2xs"
-                                  style={{
-                                    borderColor: tagHex,
-                                  }}
-                                >
-                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: tagHex }}></span>
-                                  <span className="text-on-surface">{t.label}</span>
-                                </span>
-                              );
-                            })}
+                        <div className="relative" ref={activeTagPopoverDocId === doc.id ? tagPopoverRef : null}>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {doc.tags && doc.tags.length > 0 ? (
+                              doc.tags.map((t, tIdx) => {
+                                const tagHex = t.hex || '#016879';
+                                return (
+                                  <span
+                                    key={t.id || tIdx}
+                                    className="px-2.5 py-0.5 border rounded-full text-xs whitespace-nowrap select-none font-semibold flex items-center gap-1.5 bg-surface-container text-on-surface shadow-2xs"
+                                    style={{
+                                      borderColor: tagHex,
+                                    }}
+                                  >
+                                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: tagHex }}></span>
+                                    <span className="text-on-surface">{t.label}</span>
+                                  </span>
+                                );
+                              })
+                            ) : null}
+
+                            {/* Inline Add / Edit Tag Button */}
+                            <button
+                              type="button"
+                              onClick={() => setActiveTagPopoverDocId(activeTagPopoverDocId === doc.id ? null : doc.id)}
+                              title="Add or edit tags for this document"
+                              className="group/tagbtn inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-surface border border-dashed border-outline-variant/80 text-on-surface-variant hover:border-secondary hover:text-secondary hover:bg-secondary/5 transition-all text-xs font-semibold cursor-pointer shadow-2xs"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">
+                                {activeTagPopoverDocId === doc.id ? 'close' : 'add'}
+                              </span>
+                              <span>{doc.tags && doc.tags.length > 0 ? 'Tag' : 'Tag'}</span>
+                            </button>
                           </div>
-                        ) : (
-                          <span className="text-on-surface-variant/40 italic text-xs">No tags</span>
-                        )}
+
+                          {/* Inline Tag Popover Dropdown */}
+                          {activeTagPopoverDocId === doc.id && (
+                            <div className="absolute left-0 top-full mt-2 w-64 bg-surface rounded-2xl border border-outline-variant shadow-2xl p-3.5 z-40 flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150">
+                              <div className="flex items-center justify-between pb-2 border-b border-outline-variant/60">
+                                <span className="text-label-sm font-bold text-primary flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[15px]">label</span>
+                                  Assign Tags
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTagPopoverDocId(null)}
+                                  className="text-on-surface-variant hover:text-on-surface p-0.5 rounded-md hover:bg-surface-container"
+                                >
+                                  <span className="material-symbols-outlined text-[16px] block">close</span>
+                                </button>
+                              </div>
+
+                              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto py-1">
+                                {tags.map((tag) => {
+                                  const isAssigned = (doc.tags || []).some(t => t.id === tag.id);
+                                  const tagHex = tag.hex || '#016879';
+                                  return (
+                                    <button
+                                      key={tag.id}
+                                      type="button"
+                                      onClick={() => toggleDocTag(doc, tag)}
+                                      className={`px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer select-none bg-surface-container ${
+                                        isAssigned
+                                          ? 'border-2 ring-1 ring-black/20 shadow-xs font-bold'
+                                          : 'opacity-70 hover:opacity-100 hover:bg-surface-container-high'
+                                      }`}
+                                      style={{
+                                        borderColor: tagHex,
+                                        color: '#1e293b'
+                                      }}
+                                    >
+                                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: tagHex }}></span>
+                                      <span>{tag.label}</span>
+                                      {isAssigned && (
+                                        <span className="material-symbols-outlined text-[12px] font-bold text-emerald-700">check</span>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="pt-2 border-t border-outline-variant/40 flex justify-between items-center text-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => { setActiveTagPopoverDocId(null); setShowTagModal(true); }}
+                                  className="text-secondary hover:text-primary font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">tune</span>
+                                  Manage System Tags
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
-                      {/* 7. Actions (Delete Only in Doc Hub) */}
+                      {/* 7. Actions (Delete with Confirmation Modal & RAG Purge) */}
                       <td className="px-6 py-4.5 text-right">
                         <button
                           type="button"
                           title="Delete Document"
-                          onClick={() => handleDeleteDocument(doc.id)}
+                          onClick={() => initiateDelete(doc)}
                           className="text-on-surface-variant/60 hover:text-error transition-colors p-2 rounded-xl hover:bg-error/10 cursor-pointer inline-flex items-center justify-center border border-transparent hover:border-error/20"
                         >
                           <span className="material-symbols-outlined text-[20px] block">delete</span>
@@ -640,6 +760,104 @@ export default function DocumentTable() {
 
       {showTagModal && (
         <TagModal onClose={() => setShowTagModal(false)} />
+      )}
+
+      {/* Delete Confirmation & RAG Purge Simulation Modal */}
+      {deletingDoc && createPortal(
+        <div
+          className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150"
+          onClick={() => { if (!isPurging) setDeletingDoc(null); }}
+        >
+          <div
+            className="bg-surface rounded-2xl border border-outline-variant shadow-2xl w-full max-w-[480px] p-6 relative my-auto animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header with Warning Icon */}
+            <div className="flex items-start gap-3.5 pb-3 border-b border-outline-variant/60">
+              <div className="w-12 h-12 rounded-2xl bg-error/10 text-error flex items-center justify-center shrink-0 border border-error/20">
+                <span className="material-symbols-outlined text-[28px]">delete_forever</span>
+              </div>
+              <div className="flex flex-col">
+                <h3 className="text-title-lg font-bold text-on-surface">Delete Document?</h3>
+                <p className="text-body-sm text-on-surface-variant">
+                  This will permanently remove the document and purge its vector embeddings from the local RAG store.
+                </p>
+              </div>
+            </div>
+
+            {/* Document Target Card */}
+            <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/50 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-surface flex items-center justify-center shrink-0 border border-outline-variant/40 shadow-2xs">
+                <span className={`material-symbols-outlined text-[22px] ${deletingDoc.icon?.color || 'text-error'}`}>
+                  {deletingDoc.icon?.name || 'picture_as_pdf'}
+                </span>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-body-sm font-semibold text-primary truncate" title={deletingDoc.name}>
+                  {deletingDoc.name}
+                </span>
+                <span className="text-xs text-on-surface-variant font-mono">
+                  {deletingDoc.version || 'v1.0'} • {deletingDoc.department} • {deletingDoc.size || 'Standard'}
+                </span>
+              </div>
+            </div>
+
+            {/* RAG Purge Progress State (~2 seconds) */}
+            {isPurging ? (
+              <div className="p-4 bg-error/5 border border-error/20 rounded-xl flex flex-col gap-3 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs font-semibold text-error">
+                  <span className="flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                    Purging Knowledge Base &amp; Embeddings...
+                  </span>
+                  <span className="font-mono text-[11px]">RAG Pipeline</span>
+                </div>
+                <div className="w-full bg-surface rounded-full h-2 overflow-hidden border border-error/20">
+                  <div className="bg-error h-2 rounded-full animate-pulse transition-all duration-700" style={{ width: '90%' }}></div>
+                </div>
+                <span className="text-[11px] text-on-surface-variant italic font-mono">{purgeStage}</span>
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-900 text-xs flex items-start gap-2">
+                <span className="material-symbols-outlined text-amber-600 text-[18px] shrink-0 mt-0.5">warning</span>
+                <span>
+                  <strong>Knowledge Base Notice:</strong> SetuSearch queries will no longer retrieve chunks or answers from this document once deleted.
+                </span>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-outline-variant/40">
+              <button
+                type="button"
+                disabled={isPurging}
+                onClick={() => setDeletingDoc(null)}
+                className="px-4 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant hover:bg-surface-container font-semibold text-body-sm transition-colors cursor-pointer disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isPurging}
+                onClick={handleConfirmPurgeDelete}
+                className="px-5 py-2.5 rounded-xl bg-error hover:bg-error/90 disabled:opacity-60 text-white font-semibold text-body-sm transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                {isPurging ? (
+                  <>
+                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                    Purging from RAG...
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                    Confirm &amp; Delete
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

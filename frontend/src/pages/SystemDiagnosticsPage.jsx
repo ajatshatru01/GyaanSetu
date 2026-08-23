@@ -1,20 +1,39 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDocuments } from '../context/DocumentContext';
 import { exportDocumentVaultZip } from '../utils/zipExporter';
 
 export default function SystemDiagnosticsPage() {
-  const { documents } = useDocuments();
+  const { documents, departments } = useDocuments();
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [exportedScopeName, setExportedScopeName] = useState('All');
+
+  // Export Scope Selection Modal State
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportScope, setExportScope] = useState('All'); // 'All' | 'Department'
+  const [selectedDept, setSelectedDept] = useState(departments?.[0] || 'Rolling Stock');
+
+  const deptList = departments && departments.length > 0
+    ? departments
+    : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'];
+
+  // Count docs for target scope
+  const targetDocs = exportScope === 'All'
+    ? documents
+    : documents.filter(d => (d.department || '').toLowerCase() === selectedDept.toLowerCase());
 
   // Trigger export of clean, self-contained Document Vault (.zip)
-  const handleExportVault = async () => {
+  const handleExecuteExport = async () => {
     setIsExporting(true);
     setExportSuccess(false);
 
     try {
-      await exportDocumentVaultZip(documents);
+      const scopeDept = exportScope === 'All' ? 'All' : selectedDept;
+      await exportDocumentVaultZip(documents, scopeDept);
       setIsExporting(false);
+      setShowExportModal(false);
+      setExportedScopeName(scopeDept);
       setExportSuccess(true);
       setTimeout(() => setExportSuccess(false), 6000);
     } catch (err) {
@@ -117,12 +136,12 @@ export default function SystemDiagnosticsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-surface-container rounded-2xl p-5 border border-outline-variant/40 shadow-sm flex flex-col gap-1">
             <span className="text-label-sm font-semibold uppercase text-on-surface-variant tracking-wider">Total Documents Indexed</span>
-            <div className="text-display-md font-bold text-primary">1,280 <span className="text-sm font-normal text-on-surface-variant">Files</span></div>
+            <div className="text-display-md font-bold text-primary">{documents.length.toLocaleString()} <span className="text-sm font-normal text-on-surface-variant">{documents.length === 1 ? 'File' : 'Files'}</span></div>
           </div>
 
           <div className="bg-surface-container rounded-2xl p-5 border border-outline-variant/40 shadow-sm flex flex-col gap-1">
             <span className="text-label-sm font-semibold uppercase text-on-surface-variant tracking-wider">Total Chunk Embeddings</span>
-            <div className="text-display-md font-bold text-primary">45,210 <span className="text-sm font-normal text-on-surface-variant">Chunks</span></div>
+            <div className="text-display-md font-bold text-primary">{(documents.length * 36).toLocaleString()} <span className="text-sm font-normal text-on-surface-variant">Chunks</span></div>
           </div>
 
           <div className="bg-surface-container rounded-2xl p-5 border border-outline-variant/40 shadow-sm flex flex-col gap-1">
@@ -231,7 +250,7 @@ export default function SystemDiagnosticsPage() {
           {/* Main Export Document Vault (.zip) Button */}
           <button
             type="button"
-            onClick={handleExportVault}
+            onClick={() => setShowExportModal(true)}
             disabled={isExporting}
             className="px-5 py-3 rounded-xl bg-primary hover:bg-primary-container disabled:opacity-50 text-on-primary font-semibold text-body-sm transition-all flex items-center gap-2 shadow-md cursor-pointer hover:scale-[1.02]"
           >
@@ -240,7 +259,6 @@ export default function SystemDiagnosticsPage() {
             </span>
             {isExporting ? 'Generating Document Vault (.zip)...' : 'Export Document Vault (.zip)'}
           </button>
-
         </div>
 
         {/* Export Feedback Banner */}
@@ -248,14 +266,155 @@ export default function SystemDiagnosticsPage() {
           <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-body-sm flex items-center gap-3 animate-in fade-in">
             <span className="material-symbols-outlined text-[22px] text-emerald-600">check_circle</span>
             <div>
-              <strong className="font-semibold">Document Vault (.zip) Exported Successfully!</strong>
+              <strong className="font-semibold">
+                {exportedScopeName === 'All' ? 'Full Document Vault (.zip)' : `${exportedScopeName} Vault (.zip)`} Exported Successfully!
+              </strong>
               <p className="text-xs text-emerald-700 mt-0.5">
-                A clean, self-contained archive with <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded">catalog_manifest.csv</code> (Excel-ready), <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded">replacement_lineage.json</code>, and all active/historical documents organized by department has been saved to your downloads.
+                A clean, self-contained archive ({exportedScopeName === 'All' ? 'All Departments' : `Department: ${exportedScopeName}`}) with <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded">catalog_manifest.csv</code> (Excel-ready), <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded">replacement_lineage.json</code>, and all active/historical documents has been downloaded.
               </p>
             </div>
           </div>
         )}
       </div>
+
+      {/* Export Scope Selection Modal */}
+      {showExportModal && createPortal(
+        <div
+          className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto animate-in fade-in duration-150"
+          onClick={() => { if (!isExporting) setShowExportModal(false); }}
+        >
+          <div
+            className="bg-surface rounded-2xl border border-outline-variant shadow-2xl w-full max-w-[540px] p-6 relative my-auto animate-in fade-in zoom-in-95 duration-150 flex flex-col gap-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-start justify-between pb-3 border-b border-outline-variant/60">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20 shrink-0 shadow-2xs">
+                  <span className="material-symbols-outlined text-[24px]">package_2</span>
+                </div>
+                <div>
+                  <h3 className="text-title-lg font-bold text-primary">Export Document Vault (.zip)</h3>
+                  <p className="text-body-sm text-on-surface-variant">Select whether to archive all departments or a specific department.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isExporting}
+                onClick={() => setShowExportModal(false)}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px] block">close</span>
+              </button>
+            </div>
+
+            {/* Scope Selection Cards */}
+            <div className="flex flex-col gap-3">
+              <span className="text-label-sm font-bold uppercase tracking-wider text-on-surface-variant">
+                Select Export Scope
+              </span>
+
+              {/* Option 1: All Departments */}
+              <div
+                onClick={() => setExportScope('All')}
+                className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                  exportScope === 'All'
+                    ? 'border-primary bg-primary/5 shadow-xs'
+                    : 'border-outline-variant/60 bg-surface-container-low hover:border-outline-variant hover:bg-surface-container'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    exportScope === 'All' ? 'border-primary bg-primary text-white' : 'border-outline-variant'
+                  }`}>
+                    {exportScope === 'All' && <span className="material-symbols-outlined text-[14px]">check</span>}
+                  </div>
+                  <div className="min-w-0">
+                    <strong className="text-body-md text-primary font-bold block truncate">All Departments (Complete Vault)</strong>
+                    <p className="text-xs text-on-surface-variant">Includes every active file, revision history, and manifest</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Option 2: Department-Wise */}
+              <div
+                onClick={() => setExportScope('Department')}
+                className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col gap-3 ${
+                  exportScope === 'Department'
+                    ? 'border-primary bg-primary/5 shadow-xs'
+                    : 'border-outline-variant/60 bg-surface-container-low hover:border-outline-variant hover:bg-surface-container'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    exportScope === 'Department' ? 'border-primary bg-primary text-white' : 'border-outline-variant'
+                  }`}>
+                    {exportScope === 'Department' && <span className="material-symbols-outlined text-[14px]">check</span>}
+                  </div>
+                  <div className="min-w-0">
+                    <strong className="text-body-md text-primary font-bold block truncate">Department-Specific Vault</strong>
+                    <p className="text-xs text-on-surface-variant">Export files belonging strictly to a single department</p>
+                  </div>
+                </div>
+
+                {/* Department Selection Dropdown when Department Scope is Active */}
+                {exportScope === 'Department' && (
+                  <div className="pt-2 border-t border-outline-variant/40 flex flex-col gap-2 animate-in fade-in" onClick={(e) => e.stopPropagation()}>
+                    <label className="text-xs font-semibold text-primary">Choose Department:</label>
+                    <select
+                      value={selectedDept}
+                      onChange={(e) => setSelectedDept(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-surface border border-outline-variant rounded-xl text-body-sm font-medium text-on-surface focus:outline-none focus:border-secondary focus:ring-2 focus:ring-secondary/20 shadow-2xs cursor-pointer"
+                    >
+                      {deptList.map(dept => {
+                        const count = documents.filter(d => (d.department || '').toLowerCase() === dept.toLowerCase()).length;
+                        return (
+                          <option key={dept} value={dept}>
+                            {dept} ({count} {count === 1 ? 'file' : 'files'})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Archive Content Summary Card */}
+            <div className="p-3.5 bg-surface-container-low rounded-xl border border-outline-variant/50 flex items-center justify-between gap-3 text-xs text-on-surface-variant">
+              <span className="flex items-center gap-1.5 min-w-0 truncate">
+                <span className="material-symbols-outlined text-[16px] text-secondary shrink-0">folder_zip</span>
+                <span className="truncate">Archive target: <strong className="text-primary">{exportScope === 'All' ? 'Complete Knowledge Vault' : `${selectedDept} Department`}</strong></span>
+              </span>
+              <span className="font-bold text-primary font-mono whitespace-nowrap shrink-0">{targetDocs.length} {targetDocs.length === 1 ? 'document' : 'documents'}</span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-outline-variant/40">
+              <button
+                type="button"
+                disabled={isExporting}
+                onClick={() => setShowExportModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant hover:bg-surface-container font-semibold text-body-sm transition-colors cursor-pointer disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isExporting}
+                onClick={handleExecuteExport}
+                className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-container disabled:opacity-60 text-on-primary font-semibold text-body-sm transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+              >
+                <span className={`material-symbols-outlined text-[18px] ${isExporting ? 'animate-bounce' : ''}`}>
+                  package_2
+                </span>
+                {isExporting ? 'Packaging Archive...' : 'Download Vault (.zip)'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

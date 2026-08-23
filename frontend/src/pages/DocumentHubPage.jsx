@@ -1,4 +1,3 @@
-import React from 'react';
 import DocumentUpload from '../components/DocumentUpload';
 import ActiveUpload from '../components/ActiveUpload';
 import DocumentTable from '../components/DocumentTable';

@@ -1,4 +1,3 @@
-import React from 'react';
 import { useRouter } from '../context/RouterContext';
 
 export default function Sidebar({ collapsed, onCloseMobile }) {

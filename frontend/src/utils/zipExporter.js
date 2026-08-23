@@ -223,17 +223,23 @@ startxref
 }
 
 /**
- * Creates and downloads the complete GyanSetu Document Vault (.zip)
+ * Creates and downloads the complete or department-specific GyanSetu Document Vault (.zip)
  * @param {Array} documents - Current list of documents from documentService / context
+ * @param {string} selectedDepartment - 'All' or specific department name (e.g. 'Rolling Stock')
  */
-export async function exportDocumentVaultZip(documents = []) {
+export async function exportDocumentVaultZip(documents = [], selectedDepartment = 'All') {
+  const exportDocs = selectedDepartment === 'All'
+    ? documents
+    : documents.filter(d => (d.department || '').toLowerCase() === selectedDepartment.toLowerCase());
+
   const zip = new SimpleZipBuilder();
   const dateStr = new Date().toISOString().slice(0, 10);
-  const rootFolder = `GyanSetu_Backup_${dateStr}`;
+  const deptSlug = selectedDepartment === 'All' ? '' : selectedDepartment.replace(/[^a-zA-Z0-9_-]/g, '_') + '_';
+  const rootFolder = `GyanSetu_${deptSlug}Backup_${dateStr}`;
 
   // 1. Generate catalog_manifest.csv (Excel & Calc readable)
   const csvHeaders = ['Document Name', 'Department', 'Version', 'Status', 'File Size', 'Upload Date', 'Lineage ID', 'Tags'];
-  const csvRows = documents.map(d => {
+  const csvRows = exportDocs.map(d => {
     const tagsStr = (d.tags || []).map(t => t.label || t).join('; ');
     const safeName = `"${(d.name || '').replace(/"/g, '""')}"`;
     const safeDept = `"${(d.department || 'General').replace(/"/g, '""')}"`;
@@ -251,7 +257,7 @@ export async function exportDocumentVaultZip(documents = []) {
 
   // 2. Generate replacement_lineage.json (Machine-readable parent-child lineage tree)
   const lineageGroups = {};
-  for (const doc of documents) {
+  for (const doc of exportDocs) {
     const key = doc.lineageId || doc.id || 'ungrouped';
     if (!lineageGroups[key]) {
       lineageGroups[key] = {
@@ -280,14 +286,15 @@ export async function exportDocumentVaultZip(documents = []) {
   const lineageReport = {
     exportedAt: new Date().toISOString(),
     system: "GyanSetu Metro Knowledge Management System",
-    totalDocuments: documents.length,
+    scope: selectedDepartment === 'All' ? 'All Departments' : `Department: ${selectedDepartment}`,
+    totalDocuments: exportDocs.length,
     totalLineageGroups: Object.keys(lineageGroups).length,
     lineageRegistry: Object.values(lineageGroups),
   };
   zip.addFile(`${rootFolder}/replacement_lineage.json`, lineageReport);
 
   // 3. Build Organized Directory Tree: <Root>/Documents/<Department>/<Active | Replaced_History>/<Filename>
-  for (const doc of documents) {
+  for (const doc of exportDocs) {
     const deptFolder = (doc.department || 'General_Engineering').replace(/[^a-zA-Z0-9_-]/g, '_');
     const isCurrent = doc.docStatus === 'Current' || doc.docStatus === 'Active';
     const statusFolder = isCurrent ? 'Active' : 'Replaced_History';
@@ -303,7 +310,7 @@ export async function exportDocumentVaultZip(documents = []) {
   const url = URL.createObjectURL(zipBlob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `GyanSetu_Backup_${dateStr}.zip`;
+  a.download = `GyanSetu_${deptSlug}Backup_${dateStr}.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 const MOCK_CURRENT_ONLY_ANSWER = `Based on the active Metro Engineering Manuals (SOP-RS-2026-Rev3) and CMRS Safety Circular 14/2025:
 

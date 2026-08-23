@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useDocuments } from '../context/DocumentContext';
 import { documentService } from '../services/documentService';

@@ -1,5 +1,3 @@
-import React from 'react';
-
 export default function Header({ toggleSidebar }) {
   return (
     <header className="h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant z-50 flex items-center px-6 justify-between shrink-0">

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { documentService } from '../services/documentService';
 
 const DocumentContext = createContext(null);
@@ -267,10 +267,26 @@ export function DocumentProvider({ children }) {
     setSelectedTagsFilter(prev => prev.filter(t => t !== tagId));
   };
 
+  // Update document tags handler
+  const handleUpdateDocumentTags = async (docId, newTags) => {
+    const success = await documentService.updateDocumentTags(docId, newTags);
+    if (success) {
+      setDocuments(prev => prev.map(d => d.id === docId ? { ...d, tags: newTags } : d));
+      return { success: true };
+    }
+    return { success: false, error: 'Failed to update tags' };
+  };
+
   // Delete document handler
   const handleDeleteDocument = async (id) => {
     await documentService.deleteDocument(id);
     setDocuments(prev => prev.filter(d => d.id !== id));
+  };
+
+  // Reorder documents handler (for manual drag-and-drop lineage sorting)
+  const handleReorderDocuments = async (reorderedDocs) => {
+    setDocuments(reorderedDocs);
+    localStorage.setItem('gyansetu_documents_v1', JSON.stringify(reorderedDocs));
   };
 
   // Handle initiate file selection
@@ -305,10 +321,12 @@ export function DocumentProvider({ children }) {
         startDocumentUpload,
         handleUpdateDocumentStatus,
         handleUpdateDocumentVersion,
+        handleUpdateDocumentTags,
         handleSupersedeWithNewVersion,
         handleCreateTag,
         handleDeleteTag,
         handleDeleteDocument,
+        handleReorderDocuments,
         isDuplicateFileName,
         hasDuplicateFileName,
         hasActiveDuplicate,

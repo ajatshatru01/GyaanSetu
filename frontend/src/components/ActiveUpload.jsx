@@ -1,4 +1,3 @@
-import React from 'react';
 import { useDocuments } from '../context/DocumentContext';
 
 export default function ActiveUpload() {
@@ -40,8 +39,8 @@ export default function ActiveUpload() {
         </span>
       </div>
       <div className="w-full bg-surface-variant rounded-full h-1.5 mt-sm mb-xs overflow-hidden">
-        <div 
-          className="bg-[#F9AC00] h-1.5 rounded-full transition-all duration-300 ease-out" 
+        <div
+          className="bg-[#F9AC00] h-1.5 rounded-full transition-all duration-300 ease-out"
           style={{ width: `${activeUpload.progress}%` }}
         ></div>
       </div>

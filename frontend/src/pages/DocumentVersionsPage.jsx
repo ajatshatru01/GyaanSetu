@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useDocuments } from '../context/DocumentContext';
 import SupersedeModal from '../components/SupersedeModal';
 
@@ -6,10 +6,83 @@ export default function DocumentVersionsPage() {
   const {
     documents,
     tags,
-    handleUpdateDocumentStatus
+    activeUpload,
+    handleUpdateDocumentStatus,
+    handleReorderDocuments,
   } = useDocuments();
 
   const [supersedingDoc, setSupersedingDoc] = useState(null);
+
+  // Drag & Drop State for Replaced/Historical Versions
+  const [draggedDocId, setDraggedDocId] = useState(null);
+  const [dragOverDocId, setDragOverDocId] = useState(null);
+
+  const handleDragStart = (e, doc) => {
+    if (doc.docStatus === 'Current' || doc.docStatus === 'Active') {
+      e.preventDefault();
+      return;
+    }
+    setDraggedDocId(doc.id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', doc.id);
+  };
+
+  const handleDragOver = (e, targetDoc) => {
+    e.preventDefault();
+    if (targetDoc.docStatus === 'Current' || targetDoc.docStatus === 'Active') return;
+    if (dragOverDocId !== targetDoc.id) {
+      setDragOverDocId(targetDoc.id);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverDocId(null);
+  };
+
+  const handleDrop = (e, targetDoc, groupDocs) => {
+    e.preventDefault();
+    if (!draggedDocId || draggedDocId === targetDoc.id) {
+      setDraggedDocId(null);
+      setDragOverDocId(null);
+      return;
+    }
+    if (targetDoc.docStatus === 'Current' || targetDoc.docStatus === 'Active') {
+      setDraggedDocId(null);
+      setDragOverDocId(null);
+      return;
+    }
+
+    const replaced = groupDocs.filter(d => d.docStatus !== 'Current' && d.docStatus !== 'Active');
+    const fromIndex = replaced.findIndex(d => d.id === draggedDocId);
+    const toIndex = replaced.findIndex(d => d.id === targetDoc.id);
+
+    if (fromIndex !== -1 && toIndex !== -1) {
+      const updatedReplaced = [...replaced];
+      const [movedItem] = updatedReplaced.splice(fromIndex, 1);
+      updatedReplaced.splice(toIndex, 0, movedItem);
+
+      const active = groupDocs.find(d => d.docStatus === 'Current' || d.docStatus === 'Active');
+      const targetGroupKey = targetDoc.lineageId || targetDoc.name.trim().toLowerCase();
+
+      const otherDocs = documents.filter(d => {
+        const dKey = d.lineageId || d.name.trim().toLowerCase();
+        return dKey !== targetGroupKey;
+      });
+
+      const reorderedGroup = active ? [active, ...updatedReplaced] : updatedReplaced;
+      const finalDocs = [...reorderedGroup, ...otherDocs];
+
+      handleReorderDocuments(finalDocs);
+    }
+
+    setDraggedDocId(null);
+    setDragOverDocId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedDocId(null);
+    setDragOverDocId(null);
+  };
 
   // Search & Filter States (matching Doc Hub)
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,17 +150,12 @@ export default function DocumentVersionsPage() {
     lineageGroups[key].push(doc);
   });
 
-  // Sort documents inside each group: Current active first, then by uploadedAt descending
+  // Sort documents inside each group: Current active first, then preserve relative user order for replaced docs
   Object.keys(lineageGroups).forEach((key) => {
-    lineageGroups[key].sort((a, b) => {
-      const isACurrent = a.docStatus === 'Current' || a.docStatus === 'Active';
-      const isBCurrent = b.docStatus === 'Current' || b.docStatus === 'Active';
-      if (isACurrent && !isBCurrent) return -1;
-      if (!isACurrent && isBCurrent) return 1;
-      const timeA = a.uploadedAt ? new Date(a.uploadedAt).getTime() : 0;
-      const timeB = b.uploadedAt ? new Date(b.uploadedAt).getTime() : 0;
-      return timeB - timeA;
-    });
+    const group = lineageGroups[key];
+    const active = group.filter(d => d.docStatus === 'Current' || d.docStatus === 'Active');
+    const replaced = group.filter(d => d.docStatus !== 'Current' && d.docStatus !== 'Active');
+    lineageGroups[key] = [...active, ...replaced];
   });
 
   // Count tab matches across groups
@@ -501,13 +569,85 @@ export default function DocumentVersionsPage() {
 
                 {/* 2. Timeline Tree Body matching wireframe */}
                 <div className="p-6 md:p-8 flex flex-col">
+                  {/* Realtime Ingestion Progress Card when a new revision is being uploaded/processed for this group */}
+                  {activeUpload && (
+                    (activeUpload.lineageId && activeUpload.lineageId === groupKey) ||
+                    (activeDoc.lineageId && activeUpload.lineageId === activeDoc.lineageId) ||
+                    (activeUpload.name && activeDoc.name && activeUpload.name.trim().toLowerCase() === activeDoc.name.trim().toLowerCase())
+                  ) && (
+                    <div className="flex flex-col mb-4 animate-in fade-in zoom-in-95 duration-200">
+                      <div className="flex items-start gap-4 sm:gap-5">
+                        <div className="flex flex-col items-center shrink-0 pt-0.5">
+                          <div className="w-7 h-7 min-w-[28px] min-h-[28px] aspect-square rounded-full bg-secondary/15 border-2 border-secondary text-secondary flex items-center justify-center shadow-xs shrink-0">
+                            <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                          </div>
+                        </div>
+                        <div className="flex-1 p-4 sm:p-5 rounded-2xl border border-secondary/40 bg-secondary/5 shadow-sm">
+                          <div className="flex flex-col gap-2.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-secondary text-on-secondary animate-pulse flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                                  Ingesting New Revision
+                                </span>
+                                <span className="font-bold text-primary text-body-md truncate">{activeUpload.name}</span>
+                                <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-surface border border-outline-variant/60 font-bold text-primary">
+                                  {activeUpload.version}
+                                </span>
+                              </div>
+                              <span className="font-mono text-xs font-bold text-secondary">{activeUpload.progress}%</span>
+                            </div>
+                            <div className="w-full bg-surface-container-high rounded-full h-2 overflow-hidden border border-outline-variant/30">
+                              <div
+                                className="bg-secondary h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${activeUpload.progress}%` }}
+                              ></div>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-on-surface-variant">
+                              <span className="flex items-center gap-1.5">
+                                <span className="material-symbols-outlined text-[14px] text-secondary animate-spin">sync</span>
+                                {activeUpload.stage || 'Extracting Layout & Text Layers...'}
+                              </span>
+                              <span className="italic">Embedding into vector store...</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Upward connector line */}
+                      <div className="flex items-center gap-4 sm:gap-5 my-1">
+                        <div className="w-7 flex flex-col items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-[14px] text-secondary -mb-1 font-bold animate-bounce">
+                            arrow_upward
+                          </span>
+                          <div className="w-0.5 h-6 bg-secondary/60"></div>
+                        </div>
+                        <div className="text-[11px] text-secondary font-mono font-medium pl-1">
+                          Superseding previous version below
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {groupDocs.map((doc, idx) => {
                     const isCurrent = doc.docStatus === 'Current' || doc.docStatus === 'Active';
                     const { date, time } = formatDateTime(doc.uploadedAt);
                     const isLastItem = idx === groupDocs.length - 1;
+                    const isDragging = draggedDocId === doc.id;
+                    const isDragOver = dragOverDocId === doc.id && !isCurrent;
 
                     return (
-                      <div key={doc.id || idx} className="flex flex-col">
+                      <div
+                        key={doc.id || idx}
+                        className={`flex flex-col transition-all duration-150 ${
+                          isDragging ? 'opacity-40 scale-[0.98]' : ''
+                        }`}
+                        draggable={!isCurrent}
+                        onDragStart={(e) => handleDragStart(e, doc)}
+                        onDragOver={(e) => handleDragOver(e, doc)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, doc, groupDocs)}
+                        onDragEnd={handleDragEnd}
+                      >
                         {/* Node Row */}
                         <div className="flex items-start gap-4 sm:gap-5">
                           {/* Left Status Icon Node */}
@@ -527,12 +667,24 @@ export default function DocumentVersionsPage() {
                           <div className={`flex-1 p-4 sm:p-5 rounded-2xl border transition-all ${
                             isCurrent
                               ? 'bg-surface border-emerald-500/40 shadow-sm ring-1 ring-emerald-500/20'
+                              : isDragOver
+                              ? 'bg-secondary/10 border-2 border-secondary ring-2 ring-secondary/20 shadow-md'
                               : 'bg-surface-container-low/40 border-dashed border-outline-variant/60 opacity-80 hover:opacity-100 grayscale-[40%] hover:grayscale-0 hover:bg-surface'
                           }`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div className="flex flex-col min-w-0">
                                 {/* Title Line with Version badge */}
                                 <div className="flex flex-wrap items-center gap-2.5">
+                                  {/* Drag Handle Indicator (Only for draggable replaced revisions) */}
+                                  {!isCurrent && (
+                                    <div
+                                      className="cursor-grab active:cursor-grabbing text-on-surface-variant/50 hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors flex items-center shrink-0"
+                                      title="Drag to reorder precedence of this historical version"
+                                    >
+                                      <span className="material-symbols-outlined text-[18px] block">drag_indicator</span>
+                                    </div>
+                                  )}
+
                                   <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md inline-flex items-center gap-1.5 ${
                                     isCurrent
                                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
@@ -546,7 +698,7 @@ export default function DocumentVersionsPage() {
                                     ) : (
                                       <>
                                         <span className="w-2 h-2 min-w-[8px] min-h-[8px] aspect-square rounded-full bg-amber-500 shrink-0"></span>
-                                        <span>Replaced Revision</span>
+                                        <span>Replaced</span>
                                       </>
                                     )}
                                   </span>
@@ -588,13 +740,6 @@ export default function DocumentVersionsPage() {
                                         </span>
                                       );
                                     })}
-                                  </div>
-                                )}
-
-                                {/* Contextual subtext indicator (Only for older replaced revisions) */}
-                                {!isCurrent && (
-                                  <div className="text-label-sm text-on-surface-variant/80 italic mt-2">
-                                    (Replaced previous version on {date})
                                   </div>
                                 )}
                               </div>
