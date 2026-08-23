@@ -2,11 +2,13 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useDocuments } from '../context/DocumentContext';
 import TagModal from './TagModal';
+import DepartmentModal from './DepartmentModal';
 
 export default function DocumentTable() {
   const {
     documents,
     tags,
+    departments,
     searchQuery,
     setSearchQuery,
     selectedDepartment,
@@ -17,6 +19,9 @@ export default function DocumentTable() {
     handleDeleteDocument,
     handleUpdateDocumentVersion,
     handleUpdateDocumentTags,
+    handleUpdateDocumentDepartment,
+    handleCreateDepartment,
+    handleDeleteDepartment,
   } = useDocuments();
 
   const [showTagModal, setShowTagModal] = useState(false);
@@ -26,9 +31,24 @@ export default function DocumentTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
 
+  // Department toast error state for invalid deletions
+  const [deptToastError, setDeptToastError] = useState('');
+  const showDeptToast = (msg) => {
+    setDeptToastError(msg);
+    setTimeout(() => setDeptToastError(''), 4000);
+  };
+
   // Inline Tag Assignment Popover State
   const [activeTagPopoverDocId, setActiveTagPopoverDocId] = useState(null);
   const tagPopoverRef = useRef(null);
+
+  // Department Editing & Loading States
+  const [editingDeptDocId, setEditingDeptDocId] = useState(null);
+  const [loadingDeptDocId, setLoadingDeptDocId] = useState(null);
+
+  // Add Department Modal States
+  const [showAddDeptModal, setShowAddDeptModal] = useState(false);
+  const [targetDocForDeptAdd, setTargetDocForDeptAdd] = useState(null);
 
   // Delete Confirmation & Fake RAG Purge States (~2s)
   const [deletingDoc, setDeletingDoc] = useState(null);
@@ -42,7 +62,7 @@ export default function DocumentTable() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const datePickerRef = useRef(null);
 
-  // Close date picker dropdown on outside click
+  // Close popovers and date picker dropdown on outside click
   useEffect(() => {
     function handleClickOutside(e) {
       if (datePickerRef.current && !datePickerRef.current.contains(e.target)) {
@@ -58,8 +78,13 @@ export default function DocumentTable() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDatePicker, activeTagPopoverDocId]);
 
-  // Primary Department tabs matching standard metro engineering departments
-  const CORE_DEPT_TABS = ['All', 'Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'];
+  // Primary Department tabs matching standard and custom departments
+  const CORE_DEPT_TABS = [
+    'All',
+    ...(departments && departments.length > 0
+      ? departments
+      : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'])
+  ];
 
   // Count items for each tab
   const getTabCount = (tab) => {
@@ -250,26 +275,98 @@ export default function DocumentTable() {
 
           <div className="flex-1 overflow-x-auto hide-scrollbar w-full">
             <div className="flex items-center gap-2 sm:gap-3 min-w-max pb-1 border-b border-outline-variant/40">
+              {/* Add Department Button at the Start */}
+              <button
+                type="button"
+                onClick={() => {
+                  setTargetDocForDeptAdd(null);
+                  setShowAddDeptModal(true);
+                }}
+                title="Create a new department category"
+                className="px-3 py-1.5 text-xs font-semibold text-secondary hover:text-primary hover:bg-secondary/10 border border-secondary/30 hover:border-secondary rounded-lg flex items-center gap-1 transition-all cursor-pointer shrink-0 self-center shadow-2xs mr-1"
+              >
+                <span className="material-symbols-outlined text-[15px]">add</span>
+                <span>Add Dept</span>
+              </button>
+
               {CORE_DEPT_TABS.map((tab) => {
                 const count = getTabCount(tab);
                 const isActive = selectedDepartment === tab;
+                const isDeletable = tab !== 'All' && count === 0;
+
                 return (
-                  <button
+                  <div
                     key={tab}
-                    onClick={() => { setSelectedDepartment(tab); setCurrentPage(1); }}
-                    className={`px-3.5 py-2 text-label-md font-label-md border-b-2 transition-all cursor-pointer rounded-t-lg ${
+                    className={`group/tab relative inline-flex items-center border-b-2 transition-all rounded-t-lg select-none ${
                       isActive
                         ? 'border-primary text-primary font-bold bg-primary/5'
                         : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                     }`}
                   >
-                    {tab} ({count})
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSelectedDepartment(tab); setCurrentPage(1); }}
+                      className="pl-3.5 pr-2 py-2 text-label-md font-label-md cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>{tab}</span>
+                      <span className={`text-xs font-semibold px-1.5 py-0.2 rounded-full ${
+                        isActive ? 'bg-primary/15 text-primary font-bold' : 'bg-surface-container-high text-on-surface-variant'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+
+                    {/* Delete button next to department tab in filter */}
+                    {tab !== 'All' && (
+                      isDeletable ? (
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await handleDeleteDepartment(tab);
+                          }}
+                          title={`Delete empty department "${tab}"`}
+                          className="mr-2 p-1 rounded-md text-on-surface-variant/40 hover:text-error hover:bg-error/15 opacity-0 group-hover/tab:opacity-100 transition-all cursor-pointer flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[15px] block">delete</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            showDeptToast(`To delete the "${tab}" department, you'll have to delete all files from it first (including older versions).`);
+                          }}
+                          title={`To delete "${tab}", delete all ${count} associated file(s) first`}
+                          className="mr-2 p-1 rounded-md text-on-surface-variant/30 hover:text-error/70 hover:bg-error/10 opacity-30 hover:opacity-100 transition-all cursor-pointer flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[15px] block">delete</span>
+                        </button>
+                      )
+                    )}
+                  </div>
                 );
               })}
             </div>
           </div>
         </div>
+
+        {/* Department Deletion Warning Banner */}
+        {deptToastError && (
+          <div className="mx-1 my-1 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-900 text-xs font-medium flex items-center justify-between animate-in fade-in duration-150 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-amber-600 text-[18px]">warning</span>
+              <span>{deptToastError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDeptToastError('')}
+              className="p-1 text-amber-800 hover:text-amber-950 rounded-lg cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px] block">close</span>
+            </button>
+          </div>
+        )}
 
         {/* Row 2: Tag Filter Pills & Stacked Action Controls */}
         <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
@@ -583,8 +680,74 @@ export default function DocumentTable() {
                       </td>
 
                       {/* 4. Department */}
-                      <td className="px-5 py-4.5 text-on-surface-variant font-medium whitespace-nowrap text-body-sm">
-                        {doc.department}
+                      <td className="px-5 py-4.5 whitespace-nowrap">
+                        {loadingDeptDocId === doc.id ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-secondary/10 text-secondary border border-secondary/20 rounded-lg text-xs font-semibold animate-pulse shadow-2xs">
+                            <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                            <span>Updating Dept...</span>
+                          </div>
+                        ) : editingDeptDocId === doc.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={doc.department || ''}
+                              onChange={async (e) => {
+                                const val = e.target.value;
+                                if (val === '__ADD_NEW__') {
+                                  setTargetDocForDeptAdd(doc);
+                                  setShowAddDeptModal(true);
+                                  setEditingDeptDocId(null);
+                                  return;
+                                }
+                                if (val && val !== doc.department) {
+                                  setLoadingDeptDocId(doc.id);
+                                  setEditingDeptDocId(null);
+                                  await new Promise(r => setTimeout(r, 450));
+                                  await handleUpdateDocumentDepartment(doc.id, val);
+                                  setLoadingDeptDocId(null);
+                                } else {
+                                  setEditingDeptDocId(null);
+                                }
+                              }}
+                              autoFocus
+                              className="px-2.5 py-1 bg-surface border-2 border-secondary rounded-lg text-xs font-semibold text-primary focus:outline-none shadow-sm cursor-pointer"
+                            >
+                              <option value="__ADD_NEW__" className="font-bold text-secondary">＋ Add New Department...</option>
+                              <option disabled>──────────</option>
+                              {(departments && departments.length > 0
+                                ? departments
+                                : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction']
+                              ).map((dept) => (
+                                <option key={dept} value={dept}>{dept}</option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setEditingDeptDocId(null)}
+                              className="p-1 rounded-md text-on-surface-variant hover:text-error hover:bg-error/10 transition-colors cursor-pointer"
+                              title="Cancel"
+                            >
+                              <span className="material-symbols-outlined text-[15px] block">close</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="group/dept flex items-center gap-2">
+                            <span className="text-body-sm font-medium text-on-surface-variant">
+                              {doc.department || 'General Engineering'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingDeptDocId(doc.id);
+                                setEditingVersionId(null);
+                                setActiveTagPopoverDocId(null);
+                              }}
+                              title="Edit Department"
+                              className="p-1 rounded-md text-on-surface-variant/60 hover:text-secondary hover:bg-secondary/10 opacity-0 group-hover/dept:opacity-100 transition-all cursor-pointer"
+                            >
+                              <span className="material-symbols-outlined text-[14px] block">edit</span>
+                            </button>
+                          </div>
+                        )}
                       </td>
 
                       {/* 5. Date & Time Column */}
@@ -860,6 +1023,28 @@ export default function DocumentTable() {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Manage / Add Department Modal */}
+      {showAddDeptModal && (
+        <DepartmentModal
+          onClose={() => {
+            setShowAddDeptModal(false);
+            setTargetDocForDeptAdd(null);
+          }}
+          onCreated={async (createdDept) => {
+            setSelectedDepartment(createdDept);
+            setCurrentPage(1);
+            if (targetDocForDeptAdd) {
+              setLoadingDeptDocId(targetDocForDeptAdd.id);
+              setShowAddDeptModal(false);
+              await new Promise(r => setTimeout(r, 450));
+              await handleUpdateDocumentDepartment(targetDocForDeptAdd.id, createdDept);
+              setLoadingDeptDocId(null);
+              setTargetDocForDeptAdd(null);
+            }
+          }}
+        />
       )}
     </div>
   );

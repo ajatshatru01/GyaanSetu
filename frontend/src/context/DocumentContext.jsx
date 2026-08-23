@@ -26,9 +26,10 @@ export function DocumentProvider({ children }) {
   useEffect(() => {
     async function initData() {
       setLoading(true);
-      const [storedDocs, storedTags] = await Promise.all([
+      const [storedDocs, storedTags, storedDepts] = await Promise.all([
         documentService.getDocuments(),
         documentService.getTags(),
+        documentService.getDepartments(),
       ]);
 
       // Ensure all stored docs have docStatus, version, and lineageId initialized
@@ -56,7 +57,7 @@ export function DocumentProvider({ children }) {
 
       setDocuments(normalizedDocs);
       setTags(storedTags);
-      setDepartments(documentService.getDepartments());
+      setDepartments(storedDepts || []);
       setLoading(false);
     }
     initData();
@@ -277,6 +278,50 @@ export function DocumentProvider({ children }) {
     return { success: false, error: 'Failed to update tags' };
   };
 
+  // Update document department handler
+  const handleUpdateDocumentDepartment = async (docId, newDepartment) => {
+    const success = await documentService.updateDocumentDepartment(docId, newDepartment);
+    if (success) {
+      setDocuments(prev => prev.map(d => d.id === docId ? { ...d, department: newDepartment } : d));
+      return { success: true };
+    }
+    return { success: false, error: 'Failed to update department' };
+  };
+
+  // Create department handler
+  const handleCreateDepartment = async (newDeptName) => {
+    const created = await documentService.createDepartment(newDeptName);
+    if (created) {
+      setDepartments(prev => {
+        if (prev.some(d => d.toLowerCase() === created.toLowerCase())) return prev;
+        return [...prev, created];
+      });
+      return created;
+    }
+    return null;
+  };
+
+  // Delete department handler (prevented if documents exist)
+  const handleDeleteDepartment = async (deptName) => {
+    const trimmed = (deptName || '').trim().toLowerCase();
+    const count = documents.filter(d => (d.department || '').trim().toLowerCase() === trimmed).length;
+    if (count > 0) {
+      return {
+        success: false,
+        error: `Cannot delete "${deptName}": ${count} document(s) (including older revisions) are currently associated with it.`
+      };
+    }
+    const result = await documentService.deleteDepartment(deptName);
+    if (result.success) {
+      setDepartments(prev => prev.filter(d => d.trim().toLowerCase() !== trimmed));
+      if (selectedDepartment.trim().toLowerCase() === trimmed) {
+        setSelectedDepartment('All');
+      }
+      return { success: true };
+    }
+    return result;
+  };
+
   // Delete document handler
   const handleDeleteDocument = async (id) => {
     await documentService.deleteDocument(id);
@@ -322,6 +367,9 @@ export function DocumentProvider({ children }) {
         handleUpdateDocumentStatus,
         handleUpdateDocumentVersion,
         handleUpdateDocumentTags,
+        handleUpdateDocumentDepartment,
+        handleCreateDepartment,
+        handleDeleteDepartment,
         handleSupersedeWithNewVersion,
         handleCreateTag,
         handleDeleteTag,
