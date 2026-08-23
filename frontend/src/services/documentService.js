@@ -13,6 +13,7 @@
 const STORAGE_KEYS = {
   DOCUMENTS: 'gyansetu_documents_v1',
   TAGS: 'gyansetu_tags_v1',
+  DEPARTMENTS: 'gyansetu_departments_v1',
 };
 
 const DEFAULT_TAGS = [
@@ -257,9 +258,77 @@ export const documentService = {
     }
   },
 
-  // Get list of standard departments
-  getDepartments() {
-    return DEPARTMENTS;
+  // Update document department
+  async updateDocumentDepartment(docId, newDepartment) {
+    try {
+      const docs = await this.getDocuments();
+      const updatedDocs = docs.map(doc => {
+        if (doc.id === docId) {
+          return { ...doc, department: newDepartment };
+        }
+        return doc;
+      });
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updatedDocs));
+      return true;
+    } catch (err) {
+      console.error('Error updating document department:', err);
+      return false;
+    }
+  },
+
+  // Get list of standard and custom departments
+  async getDepartments() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DEPARTMENTS);
+      if (!data) {
+        localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(DEPARTMENTS));
+        return DEPARTMENTS;
+      }
+      const parsed = JSON.parse(data);
+      const merged = Array.from(new Set([...DEPARTMENTS, ...parsed]));
+      return merged;
+    } catch (err) {
+      console.error('Error loading departments:', err);
+      return DEPARTMENTS;
+    }
+  },
+
+  // Create and persist a new department
+  async createDepartment(newDeptName) {
+    try {
+      const depts = await this.getDepartments();
+      const trimmed = (newDeptName || '').trim();
+      if (!trimmed) return null;
+      const existing = depts.find(d => d.toLowerCase() === trimmed.toLowerCase());
+      if (existing) {
+        return existing;
+      }
+      const updated = [...depts, trimmed];
+      localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(updated));
+      return trimmed;
+    } catch (err) {
+      console.error('Error creating department:', err);
+      return newDeptName;
+    }
+  },
+
+  // Delete department if no files belong to it
+  async deleteDepartment(deptName) {
+    try {
+      const docs = await this.getDocuments();
+      const trimmed = (deptName || '').trim().toLowerCase();
+      const hasFiles = docs.some(d => (d.department || '').trim().toLowerCase() === trimmed);
+      if (hasFiles) {
+        return { success: false, error: `Cannot delete '${deptName}' because documents are associated with it.` };
+      }
+      const depts = await this.getDepartments();
+      const updated = depts.filter(d => d.trim().toLowerCase() !== trimmed);
+      localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(updated));
+      return { success: true };
+    } catch (err) {
+      console.error('Error deleting department:', err);
+      return { success: false, error: 'Failed to delete department' };
+    }
   },
 
   // Format file sizes helper

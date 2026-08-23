@@ -1,20 +1,29 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useDocuments } from '../context/DocumentContext';
 import SupersedeModal from '../components/SupersedeModal';
+import DepartmentModal from '../components/DepartmentModal';
 
 export default function DocumentVersionsPage() {
   const {
     documents,
     tags,
+    departments,
     activeUpload,
     handleUpdateDocumentStatus,
     handleReorderDocuments,
+    handleCreateDepartment,
   } = useDocuments();
 
   const [supersedingDoc, setSupersedingDoc] = useState(null);
   const [targetDocForRevision, setTargetDocForRevision] = useState(null);
   const [revisionInitialFile, setRevisionInitialFile] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Add Department Modal States
+  const [showAddDeptModal, setShowAddDeptModal] = useState(false);
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptError, setNewDeptError] = useState('');
 
   const handleTriggerUploadRevision = (doc) => {
     setTargetDocForRevision(doc);
@@ -126,7 +135,12 @@ export default function DocumentVersionsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showDatePicker]);
 
-  const CORE_DEPT_TABS = ['All', 'Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'];
+  const CORE_DEPT_TABS = [
+    'All',
+    ...(departments && departments.length > 0
+      ? departments
+      : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'])
+  ];
 
   const toggleTagFilter = (tagId) => {
     setSelectedTagsFilter(prev =>
@@ -341,26 +355,95 @@ export default function DocumentVersionsPage() {
 
           <div className="flex-1 overflow-x-auto hide-scrollbar w-full">
             <div className="flex items-center gap-2 sm:gap-3 min-w-max pb-1 border-b border-outline-variant/40">
+              {/* Add Department Button at the Start */}
+              <button
+                type="button"
+                onClick={() => setShowAddDeptModal(true)}
+                title="Create a new department category"
+                className="px-3 py-1.5 text-xs font-semibold text-secondary hover:text-primary hover:bg-secondary/10 border border-secondary/30 hover:border-secondary rounded-lg flex items-center gap-1 transition-all cursor-pointer shrink-0 self-center shadow-2xs mr-1"
+              >
+                <span className="material-symbols-outlined text-[15px]">add</span>
+                <span>Add Dept</span>
+              </button>
+
               {CORE_DEPT_TABS.map((tab) => {
                 const count = getTabCount(tab);
                 const isActive = selectedDepartment === tab;
+                const isDeletable = tab !== 'All' && count === 0;
+
                 return (
-                  <button
+                  <div
                     key={tab}
-                    onClick={() => setSelectedDepartment(tab)}
-                    className={`px-3.5 py-2 text-label-md font-label-md border-b-2 transition-all cursor-pointer rounded-t-lg ${
+                    className={`group/tab relative inline-flex items-center border-b-2 transition-all rounded-t-lg select-none ${
                       isActive
                         ? 'border-primary text-primary font-bold bg-primary/5'
                         : 'border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface/50'
                     }`}
                   >
-                    {tab} ({count})
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDepartment(tab)}
+                      className="pl-3.5 pr-2 py-2 text-label-md font-label-md cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>{tab}</span>
+                      <span className={`text-xs font-semibold px-1.5 py-0.2 rounded-full ${
+                        isActive ? 'bg-primary/15 text-primary font-bold' : 'bg-surface-container-high text-on-surface-variant'
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+
+                    {/* Delete button next to department tab in filter */}
+                    {tab !== 'All' && (
+                      isDeletable ? (
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            await handleDeleteDepartment(tab);
+                          }}
+                          title={`Delete empty department "${tab}"`}
+                          className="mr-2 p-1 rounded-md text-on-surface-variant/40 hover:text-error hover:bg-error/15 opacity-0 group-hover/tab:opacity-100 transition-all cursor-pointer flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[15px] block">delete</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            showDeptToast(`To delete the "${tab}" department, you'll have to delete all files from it first (including older versions).`);
+                          }}
+                          title={`To delete "${tab}", delete all ${count} associated file(s) first`}
+                          className="mr-2 p-1 rounded-md text-on-surface-variant/30 hover:text-error/70 hover:bg-error/10 opacity-30 hover:opacity-100 transition-all cursor-pointer flex items-center justify-center"
+                        >
+                          <span className="material-symbols-outlined text-[15px] block">delete</span>
+                        </button>
+                      )
+                    )}
+                  </div>
                 );
               })}
             </div>
           </div>
         </div>
+
+        {/* Department Deletion Warning Banner */}
+        {deptToastError && (
+          <div className="mx-1 my-1 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-900 text-xs font-medium flex items-center justify-between animate-in fade-in duration-150 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-amber-600 text-[18px]">warning</span>
+              <span>{deptToastError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDeptToastError('')}
+              className="p-1 text-amber-800 hover:text-amber-950 rounded-lg cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px] block">close</span>
+            </button>
+          </div>
+        )}
 
         {/* Row 2: Tag Filter Bar & Date Dropdown */}
         <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
@@ -823,6 +906,14 @@ export default function DocumentVersionsPage() {
             setRevisionInitialFile(null);
             setTargetDocForRevision(null);
           }}
+        />
+      )}
+
+      {/* Manage / Add Department Modal */}
+      {showAddDeptModal && (
+        <DepartmentModal
+          onClose={() => setShowAddDeptModal(false)}
+          onCreated={(created) => setSelectedDepartment(created)}
         />
       )}
     </div>
