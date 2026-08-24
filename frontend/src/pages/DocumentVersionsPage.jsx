@@ -13,6 +13,7 @@ export default function DocumentVersionsPage() {
     handleUpdateDocumentStatus,
     handleReorderDocuments,
     handleCreateDepartment,
+    handleDeleteDepartment,
   } = useDocuments();
 
   const [supersedingDoc, setSupersedingDoc] = useState(null);
@@ -20,10 +21,15 @@ export default function DocumentVersionsPage() {
   const [revisionInitialFile, setRevisionInitialFile] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Department toast error state for invalid deletions
+  const [deptToastError, setDeptToastError] = useState('');
+  const showDeptToast = (msg) => {
+    setDeptToastError(msg);
+    setTimeout(() => setDeptToastError(''), 4000);
+  };
+
   // Add Department Modal States
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
-  const [newDeptName, setNewDeptName] = useState('');
-  const [newDeptError, setNewDeptError] = useState('');
 
   const handleTriggerUploadRevision = (doc) => {
     setTargetDocForRevision(doc);
@@ -137,9 +143,7 @@ export default function DocumentVersionsPage() {
 
   const CORE_DEPT_TABS = [
     'All',
-    ...(departments && departments.length > 0
-      ? departments
-      : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'])
+    ...(departments || [])
   ];
 
   const toggleTagFilter = (tagId) => {
