@@ -1,7 +1,11 @@
+from datetime import datetime
 import hashlib
+import io
+import logging
 import math
 import os
 import uuid
+import zipfile
 from typing import Any
 
 from fastapi import HTTPException, UploadFile
@@ -9,8 +13,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import Document
+from app.db.models import Document, get_ist_now
 from app.ingestion.pipeline import process_document
+
+logger = logging.getLogger(__name__)
 
 
 def format_file_size(bytes_val: int) -> str:
@@ -61,6 +67,8 @@ def serialize_document(doc: Document) -> dict:
     status_label = "Indexed (OCR)" if doc.status == "processed" else ("Processing..." if doc.status == "processing" else ("Failed" if doc.status == "failed" else file_info["defaultIndex"]))
     status_type = "secondary" if doc.status in ["processed", "uploaded"] else ("error" if doc.status == "failed" else "secondary")
 
+    uploaded_iso = f"{doc.created_at.isoformat()}+05:30" if doc.created_at else None
+
     return {
         "id": doc.id,
         "lineageId": doc.lineage_id or f"doc_{doc.id}",
@@ -76,6 +84,7 @@ def serialize_document(doc: Document) -> dict:
         "revision_label": doc.revision_label,
         "docStatus": doc.doc_status or "Current",
         "doc_status": doc.doc_status or "Current",
+        "order_index": doc.order_index,
         "tags": doc.tags or [],
         "status": {
             "label": status_label,
@@ -87,8 +96,8 @@ def serialize_document(doc: Document) -> dict:
             "name": file_info["icon"],
             "color": file_info["color"],
         },
-        "uploadedAt": doc.created_at.isoformat() if doc.created_at else None,
-        "created_at": doc.created_at,
+        "uploadedAt": uploaded_iso,
+        "created_at": uploaded_iso,
         "size": formatted_size,
         "file_size": doc.file_size,
         "file_path": doc.file_path,
@@ -131,15 +140,12 @@ def create_document(
     version: str | None = "v1.0",
     lineage_id: str | None = None,
     doc_status: str = "Current",
+    order_index: int = 0,
     tags: list[dict] | None = None,
+    uploaded_at: datetime | str | None = None,
 ) -> Document:
     file_path, file_size, file_hash = save_uploaded_file(upload_file)
     formatted_size = format_file_size(file_size)
-
-    # Check for exact duplicate file hash
-    existing_duplicate = db.execute(
-        select(Document).where(Document.file_hash == file_hash)
-    ).scalars().first()
 
     effective_version = version if version else "v1.0"
     if not effective_version.startswith("v"):
@@ -148,7 +154,6 @@ def create_document(
     # Document Family / Lineage handling
     clean_name = (upload_file.filename or "").strip().lower()
     if not lineage_id:
-        # Check if another document exists with the same filename to share lineage
         same_name_doc = db.execute(
             select(Document).where(Document.filename.ilike(clean_name))
         ).scalars().first()
@@ -158,7 +163,7 @@ def create_document(
             lineage_id = f"doc_{int(uuid.uuid4().int % 100000000)}"
 
     # If new doc is Current, demote other documents in the same lineage to 'Older Version'
-    if doc_status == "Current" and lineage_id:
+    if doc_status in ["Current", "Active"] and lineage_id:
         other_lineage_docs = db.execute(
             select(Document).where(
                 or_(
@@ -170,6 +175,17 @@ def create_document(
         for d in other_lineage_docs:
             d.doc_status = "Older Version"
 
+    # Handle custom creation timestamp if provided (defaults to current Indian Standard Time)
+    created_datetime = get_ist_now()
+    if uploaded_at:
+        if isinstance(uploaded_at, datetime):
+            created_datetime = uploaded_at
+        elif isinstance(uploaded_at, str):
+            try:
+                created_datetime = datetime.fromisoformat(uploaded_at.replace("Z", "+00:00"))
+            except Exception:
+                pass
+
     document = Document(
         title=title,
         filename=upload_file.filename or "unknown.pdf",
@@ -180,12 +196,14 @@ def create_document(
         version=effective_version,
         lineage_id=lineage_id,
         doc_status=doc_status,
+        order_index=order_index,
         file_path=file_path,
         file_hash=file_hash,
         file_size=file_size,
         formatted_size=formatted_size,
         status="uploaded",
         tags=tags or [],
+        created_at=created_datetime,
     )
 
     db.add(document)
@@ -200,7 +218,10 @@ def get_documents(
     search: str | None = None,
     doc_status: str | None = None,
 ) -> list[Document]:
-    statement = select(Document).order_by(Document.created_at.desc())
+    statement = select(Document).order_by(
+        Document.order_index.asc(),
+        Document.created_at.desc(),
+    )
 
     if department and department.lower() != "all":
         statement = statement.where(Document.department.ilike(f"%{department.strip()}%"))
@@ -289,7 +310,6 @@ def update_document_version(
 
     formatted_version = version if version.startswith("v") else f"v{version}"
 
-    # Duplicate version check within the same filename / lineage
     clean_name = document.filename.strip().lower()
     duplicate = db.execute(
         select(Document).where(
@@ -311,6 +331,39 @@ def update_document_version(
     return document
 
 
+def update_document_order(
+    db: Session,
+    document_id: int,
+    order_index: int,
+) -> Document:
+    document = db.get(Document, document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    document.order_index = order_index
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+def reorder_documents(
+    db: Session,
+    items: list[dict],
+) -> list[Document]:
+    for item in items:
+        doc_id = item.get("id")
+        order_idx = item.get("order_index", item.get("orderIndex", 0))
+        if doc_id:
+            try:
+                d_id = int(doc_id)
+                doc = db.get(Document, d_id)
+                if doc:
+                    doc.order_index = order_idx
+            except Exception:
+                pass
+    db.commit()
+    return get_documents(db)
+
+
 def update_document_tags(
     db: Session,
     document_id: int,
@@ -326,12 +379,15 @@ def update_document_tags(
     return document
 
 
-def delete_document(db: Session, document_id: int) -> bool:
+def delete_document(db: Session, document_id: int, force: bool = False) -> bool:
     document = db.get(Document, document_id)
     if not document:
         return False
 
-    # Remove file from disk
+    lineage_id = document.lineage_id
+    was_current = document.doc_status in ["Current", "Active"]
+
+    # Delete local file
     try:
         if os.path.exists(document.file_path):
             os.remove(document.file_path)
@@ -340,7 +396,46 @@ def delete_document(db: Session, document_id: int) -> bool:
 
     db.delete(document)
     db.commit()
+
+    # Guard / Auto-promote sibling if the deleted doc was Current
+    if was_current and lineage_id:
+        remaining_sibling = db.execute(
+            select(Document).where(Document.lineage_id == lineage_id).order_by(Document.created_at.desc())
+        ).scalars().first()
+        if remaining_sibling:
+            remaining_sibling.doc_status = "Current"
+            db.commit()
+
     return True
+
+
+def export_documents_zip(
+    db: Session,
+    document_ids: list[int] | None = None,
+    department: str | None = None,
+) -> io.BytesIO:
+    statement = select(Document)
+    if document_ids:
+        statement = statement.where(Document.id.in_(document_ids))
+    elif department and department.lower() != "all":
+        statement = statement.where(Document.department.ilike(f"%{department.strip()}%"))
+
+    docs = db.execute(statement).scalars().all()
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc in docs:
+            if os.path.exists(doc.file_path):
+                # Ensure unique arcname in zip if filenames match
+                arcname = f"{doc.department or 'General'}/{doc.version}_{doc.filename}"
+                zf.write(doc.file_path, arcname=arcname)
+            else:
+                # Placeholder txt if physical file was missing
+                arcname = f"{doc.department or 'General'}/{doc.filename}.txt"
+                zf.writestr(arcname, f"Title: {doc.title}\nVersion: {doc.version}\nStatus: {doc.doc_status}")
+
+    zip_buffer.seek(0)
+    return zip_buffer
 
 
 def process_existing_document(document_id: int, db: Session | None = None):
@@ -361,5 +456,4 @@ def process_existing_document(document_id: int, db: Session | None = None):
         finally:
             db_session.close()
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Background task could not connect to database for doc {document_id}: {e}")
+        logger.warning(f"Background task could not connect to database for doc {document_id}: {e}")

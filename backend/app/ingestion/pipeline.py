@@ -35,6 +35,9 @@ def process_document(
         if not markdown or not markdown.strip():
             markdown = f"# {document.title}\n\nDocument file parsed with empty text."
 
+        # Sanitize null bytes for PostgreSQL
+        markdown = markdown.replace("\x00", "")
+
         content_hash = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
         document.content_hash = content_hash
 
@@ -53,13 +56,13 @@ def process_document(
             ai_meta = extract_document_metadata_ai(markdown[:3000], document.filename)
             if ai_meta:
                 if not document.document_type and ai_meta.get("document_type"):
-                    document.document_type = ai_meta.get("document_type")
+                    document.document_type = str(ai_meta.get("document_type")).replace("\x00", "")
                 if (not document.department or document.department == "General Engineering") and ai_meta.get("department"):
-                    document.department = ai_meta.get("department")
+                    document.department = str(ai_meta.get("department")).replace("\x00", "")
                 if not document.project and ai_meta.get("project"):
-                    document.project = ai_meta.get("project")
+                    document.project = str(ai_meta.get("project")).replace("\x00", "")
                 if not document.revision_label and ai_meta.get("revision_label"):
-                    document.revision_label = ai_meta.get("revision_label")
+                    document.revision_label = str(ai_meta.get("revision_label")).replace("\x00", "")
 
         # ---------------------------------------
         # 4. Chunking
@@ -74,10 +77,19 @@ def process_document(
             raise ValueError("No text chunks could be extracted from document.")
 
         # ---------------------------------------
-        # 5. Generate embeddings
+        # 5. Context-Enriched Chunks for Embeddings
         # ---------------------------------------
-        texts = [chunk.content for chunk in chunks]
-        embeddings = generate_embeddings(texts)
+        enriched_texts = []
+        for chunk in chunks:
+            clean_text = chunk.content.replace("\x00", "")
+            section_info = f" | Section: {chunk.section}" if chunk.section else ""
+            enriched_input = (
+                f"[Document: {document.title} | Department: {document.department or 'General'}{section_info}]\n"
+                f"{clean_text}"
+            )
+            enriched_texts.append(enriched_input)
+
+        embeddings = generate_embeddings(enriched_texts)
 
         # ---------------------------------------
         # 6. Clean existing chunks (if re-indexing) & store new chunks
@@ -87,14 +99,15 @@ def process_document(
         )
 
         for chunk, embedding in zip(chunks, embeddings):
+            clean_content = chunk.content.replace("\x00", "")
             db_chunk = DocumentChunk(
                 document_id=document.id,
                 chunk_index=chunk.chunk_index,
                 page_number=chunk.page_number,
-                section=chunk.section,
-                subsection=chunk.subsection,
+                section=chunk.section.replace("\x00", "") if chunk.section else None,
+                subsection=chunk.subsection.replace("\x00", "") if chunk.subsection else None,
                 element_type=chunk.element_type,
-                content=chunk.content,
+                content=clean_content,
                 metadata_json={
                     "document_title": document.title,
                     "document_name": document.filename,
@@ -116,7 +129,13 @@ def process_document(
         logger.info(f"Successfully processed document ID {document.id} ({len(chunks)} chunks).")
 
     except Exception as exc:
+        db.rollback()
         logger.error(f"Failed processing document ID {document.id}: {exc}")
-        document.status = "failed"
-        document.error_message = str(exc)
-        db.commit()
+        try:
+            document = db.get(Document, document.id)
+            if document:
+                document.status = "failed"
+                document.error_message = str(exc)
+                db.commit()
+        except Exception:
+            pass

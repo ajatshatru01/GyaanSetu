@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.schemas.tag import TagCreate, TagItem
+from app.schemas.tag import TagCreate, TagItem, TagUpdate
 from app.services.tag_service import (
     create_custom_tag,
     delete_tag,
     get_all_tags,
+    update_tag,
 )
 
 router = APIRouter(
@@ -45,6 +46,28 @@ def add_tag(
     db: Session = Depends(get_db),
 ):
     tag = create_custom_tag(db, payload.model_dump())
+    return TagItem(
+        id=tag.id,
+        label=tag.label,
+        bgClass=tag.bg_class,
+        borderClass=tag.border_class,
+        textClass=tag.text_class,
+        hex=tag.hex,
+    )
+
+
+@router.patch(
+    "/{tag_id}",
+    response_model=TagItem,
+)
+def edit_tag(
+    tag_id: str,
+    payload: TagUpdate,
+    db: Session = Depends(get_db),
+):
+    tag = update_tag(db, tag_id, payload.model_dump(exclude_unset=True))
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found.")
     return TagItem(
         id=tag.id,
         label=tag.label,
