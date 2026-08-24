@@ -13,20 +13,12 @@ export default function DocumentVersionsPage() {
     handleUpdateDocumentStatus,
     handleReorderDocuments,
     handleCreateDepartment,
-    handleDeleteDepartment,
   } = useDocuments();
 
   const [supersedingDoc, setSupersedingDoc] = useState(null);
   const [targetDocForRevision, setTargetDocForRevision] = useState(null);
   const [revisionInitialFile, setRevisionInitialFile] = useState(null);
   const fileInputRef = useRef(null);
-
-  // Department toast error state for invalid deletions
-  const [deptToastError, setDeptToastError] = useState('');
-  const showDeptToast = (msg) => {
-    setDeptToastError(msg);
-    setTimeout(() => setDeptToastError(''), 4000);
-  };
 
   // Add Department Modal States
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
