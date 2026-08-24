@@ -81,9 +81,7 @@ export default function DocumentTable() {
   // Primary Department tabs matching standard and custom departments
   const CORE_DEPT_TABS = [
     'All',
-    ...(departments && departments.length > 0
-      ? departments
-      : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'])
+    ...(departments || [])
   ];
 
   // Count items for each tab
@@ -713,10 +711,7 @@ export default function DocumentTable() {
                             >
                               <option value="__ADD_NEW__" className="font-bold text-secondary">＋ Add New Department...</option>
                               <option disabled>──────────</option>
-                              {(departments && departments.length > 0
-                                ? departments
-                                : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction']
-                              ).map((dept) => (
+                              {(departments || []).map((dept) => (
                                 <option key={dept} value={dept}>{dept}</option>
                               ))}
                             </select>
