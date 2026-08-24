@@ -18,7 +18,7 @@ def process_document(
     db: Session,
     document: Document,
 ):
-    document.status = "processing"
+    document.status = "processing:parsing"
     db.commit()
 
     try:
@@ -71,6 +71,9 @@ def process_document(
         # ---------------------------------------
         # 4. Chunking
         # ---------------------------------------
+        document.status = "processing:chunking"
+        db.commit()
+
         chunks = create_chunks(
             markdown=markdown,
             chunk_size=settings.chunk_size,
@@ -83,6 +86,9 @@ def process_document(
         # ---------------------------------------
         # 5. Context-Enriched Chunks for Embeddings
         # ---------------------------------------
+        document.status = "processing:embedding"
+        db.commit()
+
         enriched_texts = []
         for chunk in chunks:
             clean_text = chunk.content.replace("\x00", "")
@@ -98,6 +104,9 @@ def process_document(
         # ---------------------------------------
         # 6. Clean existing chunks (if re-indexing) & store new chunks
         # ---------------------------------------
+        document.status = "processing:indexing"
+        db.commit()
+
         db.execute(
             delete(DocumentChunk).where(DocumentChunk.document_id == document.id)
         )
