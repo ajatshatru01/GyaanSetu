@@ -92,8 +92,11 @@ def create_chunks(
         if not stripped:
             continue
 
-        # Page detection (e.g. Docling <!-- page 2 --> or Page 2)
-        page_match = re.search(r'<!--\s*(?:page|Page)\s*(\d+)\s*-->', stripped)
+        # Page detection (e.g. Docling <!-- page 2 --> or --- Page 2 --- or [Page 2])
+        page_match = re.search(r'<!--\s*(?:page|Page|PAGE)\s*(\d+)\s*-->', stripped)
+        if not page_match:
+            page_match = re.search(r'^(?:---|===)?\s*(?:\[|\()?Page\s*(\d+)(?:\]|\))?\s*(?:---|===)?$', stripped, re.IGNORECASE)
+
         if page_match:
             flush_buffer()
             buffer.clear()

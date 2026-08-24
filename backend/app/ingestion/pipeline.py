@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
@@ -7,7 +8,7 @@ from app.core.config import settings
 from app.db.models import Document, DocumentChunk
 from app.ingestion.chunker import create_chunks
 from app.ingestion.embedder import generate_embeddings
-from app.ingestion.parser import parse_document
+from app.ingestion.parser import extract_markdown_with_pages, parse_document
 from app.llm.gemini import extract_document_metadata_ai
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,16 @@ def process_document(
 
     try:
         # ---------------------------------------
-        # 1. Parse with Docling
+        # 1. Parse with Docling (with provenance page tracking)
         # ---------------------------------------
         docling_document = parse_document(
             document.file_path
         )
 
         # ---------------------------------------
-        # 2. Convert to Markdown & Hash
+        # 2. Convert to Markdown & Hash (with accurate page markers)
         # ---------------------------------------
-        markdown = docling_document.export_to_markdown()
+        markdown = extract_markdown_with_pages(docling_document, document.file_path)
         if not markdown or not markdown.strip():
             markdown = f"# {document.title}\n\nDocument file parsed with empty text."
 
@@ -41,9 +42,12 @@ def process_document(
         content_hash = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
         document.content_hash = content_hash
 
-        # Estimate page count if not set
+        # Extract real page count
         if not document.page_count:
-            if hasattr(docling_document, 'pages') and docling_document.pages:
+            detected_pages = re.findall(r'<!--\s*(?:page|Page|PAGE)\s*(\d+)\s*-->', markdown)
+            if detected_pages:
+                document.page_count = max(int(p) for p in detected_pages)
+            elif hasattr(docling_document, 'pages') and docling_document.pages:
                 document.page_count = len(docling_document.pages)
             else:
                 # Estimate ~500 words per page
