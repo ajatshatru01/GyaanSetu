@@ -92,6 +92,60 @@ def create_custom_tag(db: Session, tag_data: dict) -> Tag:
     return tag
 
 
+def update_tag(db: Session, tag_id: str, updates: dict) -> Tag | None:
+    tag = db.get(Tag, tag_id)
+    if not tag:
+        return None
+
+    if "label" in updates and updates["label"] is not None:
+        tag.label = updates["label"]
+    if "bgClass" in updates and updates["bgClass"] is not None:
+        tag.bg_class = updates["bgClass"]
+    elif "bg_class" in updates and updates["bg_class"] is not None:
+        tag.bg_class = updates["bg_class"]
+
+    if "borderClass" in updates and updates["borderClass"] is not None:
+        tag.border_class = updates["borderClass"]
+    elif "border_class" in updates and updates["border_class"] is not None:
+        tag.border_class = updates["border_class"]
+
+    if "textClass" in updates and updates["textClass"] is not None:
+        tag.text_class = updates["textClass"]
+    elif "text_class" in updates and updates["text_class"] is not None:
+        tag.text_class = updates["text_class"]
+
+    if "hex" in updates and updates["hex"] is not None:
+        tag.hex = updates["hex"]
+
+    db.commit()
+    db.refresh(tag)
+
+    # Cascade-update embedded tag data in documents
+    docs = db.execute(select(Document)).scalars().all()
+    for doc in docs:
+        if doc.tags:
+            updated_doc_tags = []
+            changed = False
+            for t in doc.tags:
+                if t.get("id") == tag_id:
+                    changed = True
+                    updated_doc_tags.append({
+                        "id": tag.id,
+                        "label": tag.label,
+                        "bgClass": tag.bg_class,
+                        "borderClass": tag.border_class,
+                        "textClass": tag.text_class,
+                        "hex": tag.hex,
+                    })
+                else:
+                    updated_doc_tags.append(t)
+            if changed:
+                doc.tags = updated_doc_tags
+
+    db.commit()
+    return tag
+
+
 def delete_tag(db: Session, tag_id: str) -> bool:
     tag = db.get(Tag, tag_id)
     if not tag:

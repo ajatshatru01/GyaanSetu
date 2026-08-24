@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     chunk_size: int = 1200
     chunk_overlap: int = 200
 
-    top_k: int = 8
+    top_k: int = 15
 
     max_file_size_mb: int = 100
 

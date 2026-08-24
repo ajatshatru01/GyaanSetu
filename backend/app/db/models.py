@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -19,6 +19,40 @@ from sqlalchemy.orm import (
 
 from app.core.config import settings
 from app.db.database import Base
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def get_ist_now() -> datetime:
+    return datetime.now(IST).replace(tzinfo=None)
+
+
+class Department(Base):
+    __tablename__ = "departments"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    name: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=get_ist_now,
+        nullable=False,
+    )
 
 
 class Tag(Base):
@@ -61,35 +95,7 @@ class Tag(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
-        nullable=False,
-    )
-
-
-class Department(Base):
-    __tablename__ = "departments"
-
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        index=True,
-    )
-
-    name: Mapped[str] = mapped_column(
-        String(255),
-        unique=True,
-        nullable=False,
-        index=True,
-    )
-
-    description: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow,
+        default=get_ist_now,
         nullable=False,
     )
 
@@ -156,6 +162,12 @@ class Document(Base):
         nullable=False,
     )
 
+    order_index: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+    )
+
     file_path: Mapped[str] = mapped_column(
         String(1000),
         nullable=False,
@@ -207,7 +219,7 @@ class Document(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=get_ist_now,
         nullable=False,
     )
 

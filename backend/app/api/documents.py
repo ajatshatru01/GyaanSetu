@@ -1,3 +1,4 @@
+from datetime import datetime
 import json
 import os
 from typing import Any
@@ -12,25 +13,30 @@ from fastapi import (
     Query,
     UploadFile,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.schemas.document import (
+    DocumentOrderUpdate,
     DocumentResponse,
     DocumentStatusUpdate,
     DocumentTagsUpdate,
     DocumentUpdate,
     DocumentVersionUpdate,
+    ReorderDocumentsRequest,
 )
 from app.services.document_service import (
     create_document,
     delete_document,
+    export_documents_zip,
     get_document,
     get_documents,
     process_existing_document,
+    reorder_documents,
     serialize_document,
     update_document,
+    update_document_order,
     update_document_status,
     update_document_tags,
     update_document_version,
@@ -60,7 +66,11 @@ def upload_document(
     doc_status: str | None = Form("Current"),
     docStatus: str | None = Form(None),
     docstatus: str | None = Form(None),
+    order_index: int = Form(0),
+    orderIndex: int | None = Form(None),
     tags: str | None = Form(None),
+    uploaded_at: str | None = Form(None),
+    uploadedAt: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     if not file.filename:
@@ -98,7 +108,8 @@ def upload_document(
     doc_title = title or file.filename
     effective_lineage = lineage_id or lineageId
     effective_status = docstatus or docStatus or doc_status or "Current"
-
+    effective_order = orderIndex if orderIndex is not None else order_index
+    effective_uploaded_at = uploadedAt or uploaded_at
 
     document = create_document(
         db=db,
@@ -111,7 +122,9 @@ def upload_document(
         version=version or "v1.0",
         lineage_id=effective_lineage,
         doc_status=effective_status,
+        order_index=effective_order,
         tags=parsed_tags,
+        uploaded_at=effective_uploaded_at,
     )
 
     # Background ingestion with Docling & Embedder
@@ -140,6 +153,50 @@ def list_documents(
         doc_status=doc_status,
     )
     return [serialize_document(d) for d in docs]
+
+
+@router.get(
+    "/export",
+)
+def export_vault_archive(
+    department: str | None = Query(None),
+    ids: str | None = Query(None, description="Comma-separated list of document IDs (e.g. 1,2,3)"),
+    db: Session = Depends(get_db),
+):
+    doc_ids = None
+    if ids:
+        try:
+            doc_ids = [int(i.strip()) for i in ids.split(",") if i.strip()]
+        except Exception:
+            pass
+
+    zip_buffer = export_documents_zip(
+        db=db,
+        document_ids=doc_ids,
+        department=department,
+    )
+
+    dept_prefix = f"_{department.replace(' ', '_')}" if department and department.lower() != "all" else ""
+    filename = f"MMRCL_Document_Vault{dept_prefix}.zip"
+
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.patch(
+    "/reorder",
+    response_model=list[DocumentResponse],
+)
+def bulk_reorder_documents(
+    payload: ReorderDocumentsRequest,
+    db: Session = Depends(get_db),
+):
+    raw_items = [item.model_dump() for item in payload.documents]
+    updated_docs = reorder_documents(db, raw_items)
+    return [serialize_document(d) for d in updated_docs]
 
 
 @router.get(
@@ -205,6 +262,19 @@ def change_document_version(
 
 
 @router.put(
+    "/{document_id}/order",
+    response_model=DocumentResponse,
+)
+def change_document_order(
+    document_id: int,
+    payload: DocumentOrderUpdate,
+    db: Session = Depends(get_db),
+):
+    doc = update_document_order(db, document_id, payload.order_index)
+    return serialize_document(doc)
+
+
+@router.put(
     "/{document_id}/tags",
     response_model=DocumentResponse,
 )
@@ -223,9 +293,10 @@ def change_document_tags(
 )
 def remove_document(
     document_id: int,
+    force: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
-    success = delete_document(db, document_id)
+    success = delete_document(db, document_id, force=force)
     if not success:
         raise HTTPException(status_code=404, detail="Document not found.")
     return {"success": True, "message": f"Document {document_id} deleted successfully."}

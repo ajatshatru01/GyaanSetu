@@ -17,6 +17,19 @@ class DocumentTagsUpdate(BaseModel):
     tags: list[TagItem] = Field(default_factory=list)
 
 
+class DocumentOrderUpdate(BaseModel):
+    order_index: int = Field(..., description="Sort order index")
+
+
+class ReorderItem(BaseModel):
+    id: int | str
+    order_index: int = Field(default=0, validation_alias=AliasChoices("order_index", "orderIndex"))
+
+
+class ReorderDocumentsRequest(BaseModel):
+    documents: list[ReorderItem] = Field(default_factory=list)
+
+
 class DocumentUpdate(BaseModel):
     title: str | None = None
     department: str | None = None
@@ -26,6 +39,7 @@ class DocumentUpdate(BaseModel):
     version: str | None = None
     doc_status: str | None = None
     lineage_id: str | None = None
+    order_index: int | None = None
     tags: list[TagItem] | None = None
 
 
@@ -42,6 +56,7 @@ class DocumentResponse(BaseModel):
     version: str = "v1.0"
     revision_label: str | None = None
     docStatus: str = Field(default="Current", validation_alias=AliasChoices("docStatus", "doc_status"))
+    order_index: int = 0
     file_path: str
     file_hash: str | None = None
     file_size: int = 0
