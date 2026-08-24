@@ -1,6 +1,10 @@
 from functools import lru_cache
+import os
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -28,9 +32,15 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["*"]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(BACKEND_DIR / ".env"),
         extra="ignore",
     )
+
+    @property
+    def resolved_storage_path(self) -> str:
+        if os.path.isabs(self.storage_path):
+            return self.storage_path
+        return str(BACKEND_DIR / self.storage_path)
 
 
 @lru_cache

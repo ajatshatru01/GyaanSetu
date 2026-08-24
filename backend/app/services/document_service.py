@@ -107,11 +107,14 @@ def serialize_document(doc: Document) -> dict:
 
 
 def save_uploaded_file(upload_file: UploadFile) -> tuple[str, int, str]:
-    os.makedirs(settings.storage_path, exist_ok=True)
+    # Always anchor storage inside backend directory as defined in .env
+    storage_dir = settings.resolved_storage_path
+    os.makedirs(storage_dir, exist_ok=True)
+
     original_filename = upload_file.filename or "unknown.pdf"
     extension = os.path.splitext(original_filename)[1].lower()
     unique_filename = f"{uuid.uuid4()}{extension}"
-    file_path = os.path.join(settings.storage_path, unique_filename)
+    file_path = os.path.join(storage_dir, unique_filename)
 
     sha256 = hashlib.sha256()
     total_size = 0
@@ -387,12 +390,28 @@ def delete_document(db: Session, document_id: int, force: bool = False) -> bool:
     lineage_id = document.lineage_id
     was_current = document.doc_status in ["Current", "Active"]
 
-    # Delete local file
-    try:
-        if os.path.exists(document.file_path):
-            os.remove(document.file_path)
-    except Exception:
-        pass
+    # Delete local file from disk completely
+    if document.file_path:
+        filename = os.path.basename(document.file_path)
+        candidate_paths = [
+            document.file_path,
+            os.path.abspath(document.file_path),
+            os.path.join(settings.resolved_storage_path, filename),
+            os.path.join(settings.storage_path, filename),
+            os.path.abspath(os.path.join(settings.storage_path, filename)),
+            os.path.join("storage", "documents", filename),
+            os.path.join("backend", "storage", "documents", filename),
+            os.path.abspath(os.path.join("storage", "documents", filename)),
+            os.path.abspath(os.path.join("backend", "storage", "documents", filename)),
+        ]
+
+        for path in set(candidate_paths):
+            try:
+                if path and os.path.exists(path) and os.path.isfile(path):
+                    os.remove(path)
+                    logger.info(f"Deleted physical file from disk: {path}")
+            except Exception as exc:
+                logger.warning(f"Could not remove physical file at {path}: {exc}")
 
     db.delete(document)
     db.commit()
