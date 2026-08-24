@@ -22,8 +22,6 @@ export default function DocumentVersionsPage() {
 
   // Add Department Modal States
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
-  const [newDeptName, setNewDeptName] = useState('');
-  const [newDeptError, setNewDeptError] = useState('');
 
   const handleTriggerUploadRevision = (doc) => {
     setTargetDocForRevision(doc);
@@ -137,9 +135,7 @@ export default function DocumentVersionsPage() {
 
   const CORE_DEPT_TABS = [
     'All',
-    ...(departments && departments.length > 0
-      ? departments
-      : ['Rolling Stock', 'Signaling', 'Civil', 'Procurement', 'Safety & Compliance', 'Power & Traction'])
+    ...(departments || [])
   ];
 
   const toggleTagFilter = (tagId) => {

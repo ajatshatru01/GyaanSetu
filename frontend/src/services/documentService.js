@@ -284,9 +284,7 @@ export const documentService = {
         localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(DEPARTMENTS));
         return DEPARTMENTS;
       }
-      const parsed = JSON.parse(data);
-      const merged = Array.from(new Set([...DEPARTMENTS, ...parsed]));
-      return merged;
+      return JSON.parse(data);
     } catch (err) {
       console.error('Error loading departments:', err);
       return DEPARTMENTS;
