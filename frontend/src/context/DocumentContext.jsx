@@ -229,7 +229,7 @@ export function DocumentProvider({ children }) {
       return d;
     });
 
-    localStorage.setItem('gyansetu_documents_v1', JSON.stringify(updatedDocs));
+    localStorage.setItem('gyaansetu_documents_v1', JSON.stringify(updatedDocs));
     setDocuments(updatedDocs);
 
     // 2. Start upload of new replacement version with the SAME lineageId
@@ -331,7 +331,7 @@ export function DocumentProvider({ children }) {
   // Reorder documents handler (for manual drag-and-drop lineage sorting)
   const handleReorderDocuments = async (reorderedDocs) => {
     setDocuments(reorderedDocs);
-    localStorage.setItem('gyansetu_documents_v1', JSON.stringify(reorderedDocs));
+    localStorage.setItem('gyaansetu_documents_v1', JSON.stringify(reorderedDocs));
   };
 
   // Handle initiate file selection

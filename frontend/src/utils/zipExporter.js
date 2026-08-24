@@ -1,5 +1,5 @@
 /**
- * GyanSetu Client-Side Document Vault ZIP Archive Exporter
+ * GyaanSetu Client-Side Document Vault ZIP Archive Exporter
  * Creates standard PKWARE ZIP files with UTF-8 filenames, manifest CSV, lineage JSON, and organized document tree.
  * Fully compatible with Windows Explorer, macOS Finder, 7-Zip, and Linux Archive Manager.
  */
@@ -170,7 +170,7 @@ function generateMockPdfContent(docName, version, department, status) {
   return `%PDF-1.4
 1 0 obj
 << /Title (${docName})
-   /Author (GyanSetu Metro Knowledge Store)
+   /Author (GyaanSetu Metro Knowledge Store)
    /Subject (${department} - Version ${version} [Status: ${status}])
    /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)})
 >>
@@ -190,7 +190,7 @@ stream
 BT
 /F1 18 Tf
 50 720 Td
-(GyanSetu Metro Knowledge Vault Archive) Tj
+(GyaanSetu Metro Knowledge Vault Archive) Tj
 /F1 12 Tf
 0 -30 Td
 (Document: ${docName}) Tj
@@ -199,7 +199,7 @@ BT
 0 -20 Td
 (Authoritative Release Status: ${status}) Tj
 0 -30 Td
-(This document has been archived from GyanSetu on-premise knowledge repository.) Tj
+(This document has been archived from GyaanSetu on-premise knowledge repository.) Tj
 ET
 endstream
 endobj
@@ -223,7 +223,7 @@ startxref
 }
 
 /**
- * Creates and downloads the complete or department-specific GyanSetu Document Vault (.zip)
+ * Creates and downloads the complete or department-specific GyaanSetu Document Vault (.zip)
  * @param {Array} documents - Current list of documents from documentService / context
  * @param {string} selectedDepartment - 'All' or specific department name (e.g. 'Rolling Stock')
  */
@@ -235,7 +235,7 @@ export async function exportDocumentVaultZip(documents = [], selectedDepartment 
   const zip = new SimpleZipBuilder();
   const dateStr = new Date().toISOString().slice(0, 10);
   const deptSlug = selectedDepartment === 'All' ? '' : selectedDepartment.replace(/[^a-zA-Z0-9_-]/g, '_') + '_';
-  const rootFolder = `GyanSetu_${deptSlug}Backup_${dateStr}`;
+  const rootFolder = `GyaanSetu_${deptSlug}Backup_${dateStr}`;
 
   // 1. Generate catalog_manifest.csv (Excel & Calc readable)
   const csvHeaders = ['Document Name', 'Department', 'Version', 'Status', 'File Size', 'Upload Date', 'Lineage ID', 'Tags'];
@@ -285,7 +285,7 @@ export async function exportDocumentVaultZip(documents = [], selectedDepartment 
 
   const lineageReport = {
     exportedAt: new Date().toISOString(),
-    system: "GyanSetu Metro Knowledge Management System",
+    system: "GyaanSetu Metro Knowledge Management System",
     scope: selectedDepartment === 'All' ? 'All Departments' : `Department: ${selectedDepartment}`,
     totalDocuments: exportDocs.length,
     totalLineageGroups: Object.keys(lineageGroups).length,
@@ -310,7 +310,7 @@ export async function exportDocumentVaultZip(documents = [], selectedDepartment 
   const url = URL.createObjectURL(zipBlob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `GyanSetu_${deptSlug}Backup_${dateStr}.zip`;
+  a.download = `GyaanSetu_${deptSlug}Backup_${dateStr}.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

@@ -12,9 +12,9 @@ export default function Header({ toggleSidebar }) {
         </button>
         <div className="flex items-center gap-2.5">
           <img
-            alt="GyanSetu Metro Logo"
+            alt="GyaanSetu Metro Logo"
             className="h-15 w-auto object-contain"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuA6RIelR4h-sjXHS-CVqoFB1HJ1CGzUrRkeL0MzVZTdufgJhfXUO0MWbLAfPa1xOyVkTkagXmW05Mc3hzAAAG3Uzpu0DCZOF2DYKKEhhFzRWUJXitxCd-ruBw8uz5_D7zqLqUq6I1nGLIx5wnh5KwLT5PxkK1GjRo_9FOcYkGr3ZvTwZRN65X6gNdfPGCUOA11QIBEimo1tf0CJUDizyL00O_G5WX1nis0EKpYebbS0XpsvVALDE7AH0g"
+            src="/logo.jpg"
           />
         </div>
       </div>

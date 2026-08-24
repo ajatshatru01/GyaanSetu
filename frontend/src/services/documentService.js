@@ -11,9 +11,9 @@
  */
 
 const STORAGE_KEYS = {
-  DOCUMENTS: 'gyansetu_documents_v1',
-  TAGS: 'gyansetu_tags_v1',
-  DEPARTMENTS: 'gyansetu_departments_v1',
+  DOCUMENTS: 'gyaansetu_documents_v1',
+  TAGS: 'gyaansetu_tags_v1',
+  DEPARTMENTS: 'gyaansetu_departments_v1',
 };
 
 const DEFAULT_TAGS = [
