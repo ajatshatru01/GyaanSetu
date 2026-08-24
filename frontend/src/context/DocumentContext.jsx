@@ -22,6 +22,50 @@ export function DocumentProvider({ children }) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isTagModalOpen, setIsTagModalOpen] = useState(false);
 
+  // Determine file type helper
+  function getFileTypeInfo(filename) {
+    if (!filename) return { type: 'other', icon: 'draft', color: 'text-primary', defaultIndex: 'Indexed' };
+    const ext = filename.split('.').pop().toLowerCase();
+    if (ext === 'pdf') {
+      return { type: 'pdf', icon: 'picture_as_pdf', color: 'text-error', defaultIndex: 'Indexed (OCR)' };
+    } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
+      return { type: 'excel', icon: 'table', color: 'text-[#107C41]', defaultIndex: 'Indexed (Tables)' };
+    } else if (['docx', 'doc'].includes(ext)) {
+      return { type: 'word', icon: 'description', color: 'text-[#2B579A]', defaultIndex: 'Indexed (Docs)' };
+    }
+    return { type: 'other', icon: 'draft', color: 'text-primary', defaultIndex: 'Indexed' };
+  }
+
+  const normalizeDocs = (fetchedDocs) => {
+    const nameToLineage = {};
+    fetchedDocs.forEach(d => {
+      const cleanName = (d.name || '').trim().toLowerCase();
+      if (d.lineageId) {
+        nameToLineage[cleanName] = d.lineageId;
+      }
+    });
+
+    return fetchedDocs.map(d => {
+      const cleanName = (d.name || '').trim().toLowerCase();
+      const lineageId = d.lineageId || nameToLineage[cleanName] || d.id;
+      nameToLineage[cleanName] = lineageId;
+
+      const fileInfo = getFileTypeInfo(d.name || '');
+
+      return {
+        ...d,
+        lineageId,
+        docStatus: (d.docStatus === 'Superseded' || d.docStatus === 'Older Version') ? 'Older Version' : 'Current',
+        version: d.version || 'v1.0',
+        uploadedAt: d.uploadedAt || new Date().toISOString(),
+        icon: d.icon || { name: fileInfo.icon, color: fileInfo.color },
+        action: d.action || 'Re-index',
+        actionColor: d.actionColor || 'text-secondary hover:text-primary',
+        size: d.size || documentService.formatFileSize(0)
+      };
+    });
+  };
+
   // Load initial data
   useEffect(() => {
     async function initData() {
@@ -32,49 +76,13 @@ export function DocumentProvider({ children }) {
         documentService.getDepartments(),
       ]);
 
-      // Ensure all stored docs have docStatus, version, and lineageId initialized
-      // Group documents by existing lineageId or filename so revisions share the same lineage
-      const nameToLineage = {};
-      storedDocs.forEach(d => {
-        const cleanName = (d.name || '').trim().toLowerCase();
-        if (d.lineageId) {
-          nameToLineage[cleanName] = d.lineageId;
-        }
-      });
-
-      const normalizedDocs = storedDocs.map(d => {
-        const cleanName = (d.name || '').trim().toLowerCase();
-        const lineageId = d.lineageId || nameToLineage[cleanName] || d.id;
-        nameToLineage[cleanName] = lineageId;
-        return {
-          ...d,
-          lineageId,
-          docStatus: (d.docStatus === 'Superseded' || d.docStatus === 'Older Version') ? 'Older Version' : 'Current',
-          version: d.version || 'v1.0',
-          uploadedAt: d.uploadedAt || new Date().toISOString(),
-        };
-      });
-
-      setDocuments(normalizedDocs);
+      setDocuments(normalizeDocs(storedDocs));
       setTags(storedTags);
       setDepartments(storedDepts || []);
       setLoading(false);
     }
     initData();
   }, []);
-
-  // Determine file type helper
-  const getFileTypeInfo = (filename) => {
-    const ext = filename.split('.').pop().toLowerCase();
-    if (ext === 'pdf') {
-      return { type: 'pdf', icon: 'picture_as_pdf', color: 'text-error', defaultIndex: 'Indexed (OCR)' };
-    } else if (['xlsx', 'xls', 'csv'].includes(ext)) {
-      return { type: 'excel', icon: 'table', color: 'text-[#107C41]', defaultIndex: 'Indexed (Tables)' };
-    } else if (['docx', 'doc'].includes(ext)) {
-      return { type: 'word', icon: 'description', color: 'text-[#2B579A]', defaultIndex: 'Indexed (Docs)' };
-    }
-    return { type: 'other', icon: 'draft', color: 'text-primary', defaultIndex: 'Indexed' };
-  };
 
   // Check if ANY document with this exact filename already exists anywhere in the system
   const hasDuplicateFileName = useCallback((filename, excludeDocId = null) => {
@@ -117,7 +125,7 @@ export function DocumentProvider({ children }) {
   };
 
   // Start upload & indexing process
-  const startDocumentUpload = useCallback((file, { department, selectedTags, version, lineageId, onComplete }) => {
+  const startDocumentUpload = useCallback(async (file, { department, selectedTags, version, lineageId, onComplete }) => {
     setIsUploadModalOpen(false);
     setPendingUploadFile(null);
 
@@ -126,7 +134,7 @@ export function DocumentProvider({ children }) {
 
     const newDocId = 'doc_' + Date.now();
     const docVersion = version ? (version.startsWith('v') ? version : `v${version}`) : 'v1.0';
-    const effectiveLineageId = lineageId || newDocId;
+    const effectiveLineageId = lineageId || '';
 
     // Set active upload state
     setActiveUpload({
@@ -134,7 +142,7 @@ export function DocumentProvider({ children }) {
       name: file.name,
       size: formattedSize,
       progress: 5,
-      stage: 'Extracting Layout & Entities...',
+      stage: 'Uploading to server...',
       fileInfo,
       department,
       selectedTags: selectedTags || [],
@@ -142,58 +150,106 @@ export function DocumentProvider({ children }) {
       lineageId: effectiveLineageId,
     });
 
-    // Simulate multi-stage RAG ingestion pipeline
-    let currentProgress = 5;
-    const interval = setInterval(() => {
-      currentProgress += Math.floor(Math.random() * 15) + 10;
+    try {
+      // Create FormData content mapping
+      const formDataObj = {
+        title: file.name,
+        department: department || 'General Engineering',
+        version: docVersion,
+        lineage_id: effectiveLineageId,
+        doc_status: 'Current',
+      };
 
-      if (currentProgress < 40) {
-        setActiveUpload(prev => prev ? { ...prev, progress: currentProgress, stage: 'Extracting Layout & Tables...' } : null);
-      } else if (currentProgress < 75) {
-        setActiveUpload(prev => prev ? { ...prev, progress: currentProgress, stage: 'Generating Chunks & OCR Embeddings...' } : null);
-      } else if (currentProgress < 100) {
-        setActiveUpload(prev => prev ? { ...prev, progress: currentProgress, stage: 'Syncing with Vector Store...' } : null);
-      } else {
-        clearInterval(interval);
-        setActiveUpload(prev => prev ? { ...prev, progress: 100, stage: 'Indexing Complete!' } : null);
-
-        const newDoc = {
-          id: newDocId,
-          lineageId: effectiveLineageId,
-          name: file.name,
-          department: department || 'General Engineering',
-          tags: selectedTags && selectedTags.length > 0 ? selectedTags : [],
-          docStatus: 'Current', // Default Current
-          version: docVersion,
-          status: {
-            label: fileInfo.defaultIndex,
-            type: 'secondary',
-          },
-          action: 'Re-index',
-          actionColor: 'text-secondary hover:text-primary',
-          icon: { name: fileInfo.icon, color: fileInfo.color },
-          uploadedAt: new Date().toISOString(),
-          size: formattedSize,
-        };
-
-        // Persist to document service
-        documentService.saveDocument(newDoc).then((savedDoc) => {
-          setDocuments(prev => [savedDoc, ...prev]);
-          if (onComplete) onComplete(savedDoc);
-          setTimeout(() => {
-            setActiveUpload(null);
-          }, 1200);
-        });
+      if (selectedTags && selectedTags.length > 0) {
+        formDataObj.tags = JSON.stringify(selectedTags);
       }
-    }, 350);
+
+      setActiveUpload({
+        id: newDocId,
+        name: file.name,
+        size: formattedSize,
+        progress: 45,
+        stage: 'Uploading file to server...',
+        fileInfo,
+        department,
+        selectedTags: selectedTags || [],
+        version: docVersion,
+        lineageId: effectiveLineageId,
+      });
+
+      // Perform actual API upload
+      const savedDoc = await documentService.uploadDocument(file, formDataObj);
+
+      setActiveUpload({
+        id: newDocId,
+        name: file.name,
+        size: formattedSize,
+        progress: 100,
+        stage: 'Uploaded! Ingestion pipeline active in background...',
+        fileInfo,
+        department,
+        selectedTags: selectedTags || [],
+        version: docVersion,
+        lineageId: effectiveLineageId,
+      });
+
+      setDocuments(prev => normalizeDocs([savedDoc, ...prev]));
+      if (onComplete) onComplete(savedDoc);
+
+      setTimeout(() => {
+        setActiveUpload(null);
+      }, 1500);
+
+    } catch (err) {
+      console.error("Upload failed", err);
+      setActiveUpload(prev => prev ? { ...prev, progress: 100, stage: 'Failed to upload' } : null);
+      setTimeout(() => {
+        setActiveUpload(null);
+      }, 3000);
+    }
   }, []);
+
+  // Background Ingestion Polling Effect
+  // Polls backend status every 2 seconds if any document is being parsed, chunked, or embedded
+  useEffect(() => {
+    const hasProcessing = documents.some(doc => {
+      const statusObj = doc.status;
+      const label = (statusObj?.label || '').toLowerCase();
+      const type = statusObj?.type;
+      return (
+        type === 'processing' ||
+        label.includes('...') ||
+        label.startsWith('queued') ||
+        label.startsWith('parsing') ||
+        label.startsWith('creating') ||
+        label.startsWith('generating') ||
+        label.startsWith('saving') ||
+        label.startsWith('processing')
+      );
+    });
+
+    if (!hasProcessing) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const refreshed = await documentService.getDocuments();
+        if (refreshed && Array.isArray(refreshed)) {
+          setDocuments(normalizeDocs(refreshed));
+        }
+      } catch (err) {
+        console.error('Error polling document status:', err);
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [documents]);
 
   // Update document status handler ('Current' | 'Older Version')
   // Automatically ensures only ONE document in the same lineage is Current
   const handleUpdateDocumentStatus = async (id, newStatus) => {
     const updatedDocs = await documentService.updateDocumentStatus(id, newStatus);
     if (updatedDocs) {
-      setDocuments(updatedDocs);
+      setDocuments(normalizeDocs(updatedDocs));
     } else {
       setDocuments(prev => prev.map(doc => doc.id === id ? { ...doc, docStatus: newStatus } : doc));
     }
@@ -218,26 +274,28 @@ export function DocumentProvider({ children }) {
     const oldDoc = documents.find(d => d.id === oldDocId);
     const lineageId = oldDoc ? (oldDoc.lineageId || oldDoc.id) : oldDocId;
 
-    // 1. Mark old doc and all documents in its lineage as Older Version
-    const docs = await documentService.getDocuments();
-    const updatedDocs = docs.map(d => {
+    // Optimistically update the UI to mark old doc and all documents in its lineage as Older Version
+    // The backend will enforce this when we upload the new 'Current' document
+    setDocuments(prevDocs => prevDocs.map(d => {
       const isTarget = d.id === oldDocId;
       const isSameLineage = oldDoc && ((d.lineageId && d.lineageId === lineageId) || (d.name?.trim().toLowerCase() === oldDoc.name?.trim().toLowerCase()));
       if (isTarget || isSameLineage) {
         return { ...d, lineageId, docStatus: 'Older Version' };
       }
       return d;
-    });
+    }));
 
-    localStorage.setItem('gyaansetu_documents_v1', JSON.stringify(updatedDocs));
-    setDocuments(updatedDocs);
-
-    // 2. Start upload of new replacement version with the SAME lineageId
+    // Start upload of new replacement version with the SAME lineageId
     startDocumentUpload(newFile, {
       department,
       selectedTags,
       version,
       lineageId,
+      onComplete: async () => {
+        // Refetch all documents to ensure UI is in sync with backend state after upload
+        const refreshedDocs = await documentService.getDocuments();
+        setDocuments(normalizeDocs(refreshedDocs));
+      }
     });
   };
 
@@ -330,8 +388,9 @@ export function DocumentProvider({ children }) {
 
   // Reorder documents handler (for manual drag-and-drop lineage sorting)
   const handleReorderDocuments = async (reorderedDocs) => {
-    setDocuments(reorderedDocs);
-    localStorage.setItem('gyaansetu_documents_v1', JSON.stringify(reorderedDocs));
+    const indexedDocs = reorderedDocs.map((d, idx) => ({ ...d, order_index: idx }));
+    setDocuments(indexedDocs);
+    await documentService.reorderDocuments(indexedDocs);
   };
 
   // Handle initiate file selection
@@ -379,6 +438,8 @@ export function DocumentProvider({ children }) {
         hasDuplicateFileName,
         hasActiveDuplicate,
         hasSameNameAndVersion,
+        isAnyIngesting: documents.some(d => d.status?.type === 'processing' || (d.status?.label || '').includes('...')),
+        ingestingDocs: documents.filter(d => d.status?.type === 'processing' || (d.status?.label || '').includes('...')),
       }}
     >
       {children}

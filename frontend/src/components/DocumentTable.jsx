@@ -50,10 +50,11 @@ export default function DocumentTable() {
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
   const [targetDocForDeptAdd, setTargetDocForDeptAdd] = useState(null);
 
-  // Delete Confirmation & Fake RAG Purge States (~2s)
+  // Delete Confirmation & RAG Purge States
   const [deletingDoc, setDeletingDoc] = useState(null);
   const [isPurging, setIsPurging] = useState(false);
   const [purgeStage, setPurgeStage] = useState('');
+  const [purgeProgress, setPurgeProgress] = useState(0);
 
   // Date Filter States
   const [datePreset, setDatePreset] = useState('all'); // 'all' | 'today' | '7days' | '30days' | 'custom'
@@ -212,23 +213,47 @@ export default function DocumentTable() {
     setDeletingDoc(doc);
     setIsPurging(false);
     setPurgeStage('');
+    setPurgeProgress(0);
   };
 
   const handleConfirmPurgeDelete = async () => {
     if (!deletingDoc) return;
     setIsPurging(true);
-    setPurgeStage('Unlinking document chunks from OCR layout cache...');
+    setPurgeProgress(20);
+    setPurgeStage('Initiating purge request with server...');
 
-    setTimeout(() => {
+    const pTimer1 = setTimeout(() => {
+      setPurgeProgress(50);
+      setPurgeStage('Deleting document records and unlinking chunks...');
+    }, 250);
+
+    const pTimer2 = setTimeout(() => {
+      setPurgeProgress(80);
       setPurgeStage('Flushing vector embeddings from pgvector database...');
-    }, 900);
+    }, 600);
 
-    setTimeout(async () => {
+    try {
       await handleDeleteDocument(deletingDoc.id);
-      setIsPurging(false);
-      setDeletingDoc(null);
-      setPurgeStage('');
-    }, 2000);
+      clearTimeout(pTimer1);
+      clearTimeout(pTimer2);
+      setPurgeProgress(100);
+      setPurgeStage('Purge complete! Document removed from knowledge base.');
+      setTimeout(() => {
+        setIsPurging(false);
+        setDeletingDoc(null);
+        setPurgeStage('');
+        setPurgeProgress(0);
+      }, 400);
+    } catch (err) {
+      clearTimeout(pTimer1);
+      clearTimeout(pTimer2);
+      setPurgeStage('Error deleting document: ' + (err.message || 'Server error'));
+      setTimeout(() => {
+        setIsPurging(false);
+        setDeletingDoc(null);
+        setPurgeProgress(0);
+      }, 2000);
+    }
   };
 
   const getDateFilterLabel = () => {
@@ -615,7 +640,25 @@ export default function DocumentTable() {
                             <span className="font-semibold text-primary truncate max-w-[180px] sm:max-w-[240px] text-body-sm" title={doc.name}>
                               {doc.name}
                             </span>
-                            {doc.size && <span className="text-[11px] text-on-surface-variant/80 mt-0.5">{doc.size}</span>}
+                            <div className="flex items-center flex-wrap gap-1.5 mt-0.5">
+                              {doc.size && <span className="text-[11px] text-on-surface-variant/80 font-mono">{doc.size}</span>}
+                              {doc.status?.type === 'processing' || (doc.status?.label || '').includes('...') || (doc.status?.label || '').startsWith('Queued') ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 border border-amber-500/20 text-[10px] font-semibold animate-pulse">
+                                  <span className="material-symbols-outlined text-[11px] animate-spin">progress_activity</span>
+                                  {doc.status?.label || 'Processing...'}
+                                </span>
+                              ) : doc.status?.type === 'error' || doc.status?.label === 'Ingestion Failed' ? (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-error/10 text-error border border-error/20 text-[10px] font-semibold" title={doc.error_message || 'Ingestion failed'}>
+                                  <span className="material-symbols-outlined text-[11px]">error</span>
+                                  {doc.status?.label || 'Failed'}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 font-medium opacity-75">
+                                  <span className="material-symbols-outlined text-[11px] text-emerald-600">verified</span>
+                                  {doc.status?.label || 'Indexed'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -962,7 +1005,7 @@ export default function DocumentTable() {
               </div>
             </div>
 
-            {/* RAG Purge Progress State (~2 seconds) */}
+            {/* RAG Purge Progress State */}
             {isPurging ? (
               <div className="p-4 bg-error/5 border border-error/20 rounded-xl flex flex-col gap-3 animate-in fade-in">
                 <div className="flex items-center justify-between text-xs font-semibold text-error">
@@ -970,10 +1013,13 @@ export default function DocumentTable() {
                     <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
                     Purging Knowledge Base &amp; Embeddings...
                   </span>
-                  <span className="font-mono text-[11px]">RAG Pipeline</span>
+                  <span className="font-mono text-[11px] font-bold">{purgeProgress}%</span>
                 </div>
                 <div className="w-full bg-surface rounded-full h-2 overflow-hidden border border-error/20">
-                  <div className="bg-error h-2 rounded-full animate-pulse transition-all duration-700" style={{ width: '90%' }}></div>
+                  <div
+                    className="bg-error h-2 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${purgeProgress}%` }}
+                  ></div>
                 </div>
                 <span className="text-[11px] text-on-surface-variant italic font-mono">{purgeStage}</span>
               </div>

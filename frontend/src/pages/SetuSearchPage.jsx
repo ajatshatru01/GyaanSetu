@@ -1,276 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useDocuments } from '../context/DocumentContext';
+import { documentService } from '../services/documentService';
 
-const MOCK_CURRENT_ONLY_ANSWER = `Based on the active Metro Engineering Manuals across all departments (SOP-RS-2026-Rev3 and CMRS Safety Circular 14/2025):
-
-### 1. Key Engineering Findings & Specifications
-- **Permissible Cant Deficiency**: On mainline tracks under 25 kV AC OHE traction, the standard cant deficiency is capped at **100 mm** for standard BG/SG Metro rolling stock.
-- **Speed & Turnout Limitations**: For operation over curved turnouts (1 in 12 or 1 in 8.5), the maximum allowable cant deficiency shall not exceed **75 mm** unless special dispensation is issued by RDSO.
-- **Inspection Protocol**: Ultrasonic flaw detection (USFD) and pantograph contact force measurements must be performed bi-weekly during monsoon conditions.
-- **Interlocking & Fail-Safe Integration**: All track circuit clearance telemetry must integrate with the CBTC ATS server to enforce automatic emergency braking (EB) upon threshold violation.`;
-
-const MOCK_ALL_VERSIONS_ANSWER = `Based on a cross-comparison of both Current Active standards and Historical Revisions across all departments:
-
-### 1. Current Active Specification (2026 Release)
-- **Current Cant Deficiency**: Strictly capped at **100 mm** for mainline 25 kV AC OHE tracks (**Pantograph_Inspection_2026_Rev3.pdf**, Section 4.2).
-- **Turnout Speed Restrictions**: Reduced to **75 mm** on 1:12 turnouts to prevent excessive flange wear.
-
-### 2. Historical & Superseded Rules (2024 Baseline)
-- **Superseded Limit**: Previously allowed up to **110 mm** under older guideline (**Pantograph_Inspection_2024_Rev1.pdf**, Section 3.1). This was superseded to reduce pantograph carbon strip wear and harmonic vibration.
-- **Legacy Turnout Tolerance**: Formerly permitted **85 mm** before the 2025 RDSO safety amendment.
-
-> **Historical Audit Notice**: This query retrieved parameters across 2 active releases and 1 superseded revision for cross-department comparison.`;
-
-const MOCK_CURRENT_SOURCES = [
-  {
-    docName: 'Pantograph_Inspection_2026_Rev3.pdf',
-    department: 'Rolling Stock',
-    version: 'v3.0',
-    docStatus: 'Current',
-    chunkId: 'Chunk #4 (Page 18)',
-    relevance: '98.4% Match',
-    icon: 'picture_as_pdf',
-    iconColor: 'text-error',
-    snippet: 'Clause 4.2.3: For 25kV AC overhead equipment (OHE) mainline corridors, the maximum permissible cant deficiency for broad gauge (BG) and standard gauge (SG) rolling stock shall not exceed 100mm under normal operating speeds.'
-  },
-  {
-    docName: 'Track_Drainage_Monsoon_SOP_Rev4.pdf',
-    department: 'Civil',
-    version: 'v4.0',
-    docStatus: 'Current',
-    chunkId: 'Chunk #12 (Page 9)',
-    relevance: '94.8% Match',
-    icon: 'picture_as_pdf',
-    iconColor: 'text-error',
-    snippet: 'Table 3.1: Special speed restrictions over turnouts (1 in 12 and 1 in 8.5) mandate a reduced cant deficiency limit of 75mm during high-precipitation periods.'
-  },
-  {
-    docName: 'CBTC_Signaling_Interlocking_Spec_2026.docx',
-    department: 'Signaling',
-    version: 'v2.1',
-    docStatus: 'Current',
-    chunkId: 'Chunk #7 (Page 34)',
-    relevance: '91.2% Match',
-    icon: 'description',
-    iconColor: 'text-[#2B579A]',
-    snippet: 'Appendix B: Automatic Train Supervision (ATS) safety profiles enforce immediate Emergency Brake (EB) triggers when cant deficiency telemetry thresholds are exceeded.'
-  }
-];
-
-const MOCK_ALL_VERSIONS_SOURCES = [
-  {
-    docName: 'Pantograph_Inspection_2026_Rev3.pdf',
-    department: 'Rolling Stock',
-    version: 'v3.0',
-    docStatus: 'Current',
-    chunkId: 'Chunk #4 (Page 18)',
-    relevance: '98.4% Match',
-    icon: 'picture_as_pdf',
-    iconColor: 'text-error',
-    snippet: 'Clause 4.2.3 (Current): Maximum permissible cant deficiency capped at 100mm under normal operating speeds.'
-  },
-  {
-    docName: 'Pantograph_Inspection_2024_Rev1.pdf',
-    department: 'Rolling Stock',
-    version: 'v1.0',
-    docStatus: 'Older Version',
-    chunkId: 'Chunk #2 (Page 7)',
-    relevance: '95.1% Match',
-    icon: 'picture_as_pdf',
-    iconColor: 'text-amber-700',
-    snippet: 'Clause 3.1.2 (Superseded): Permissible cant deficiency up to 110mm permitted under 2024 operational schedule.'
-  },
-  {
-    docName: 'Track_Drainage_Monsoon_SOP_Rev4.pdf',
-    department: 'Civil',
-    version: 'v4.0',
-    docStatus: 'Current',
-    chunkId: 'Chunk #12 (Page 9)',
-    relevance: '92.4% Match',
-    icon: 'picture_as_pdf',
-    iconColor: 'text-error',
-    snippet: 'Table 3.1 (Current): Mandatory turnout cant deficiency ceiling of 75mm during monsoon maintenance cycles.'
-  }
-];
-
-const DEPARTMENT_MOCK_DATA = {
-  'Rolling Stock': {
-    answer: `Based on active Rolling Stock Technical Standards & Maintenance Manuals (SOP-RS-2026-Rev3):
-
-### 1. Rolling Stock Specifications & Tolerances
-- **Permissible Cant Deficiency**: Strictly capped at **100 mm** for broad gauge & standard gauge metro rolling stock on mainline tracks under 25 kV AC OHE.
-- **Pantograph & Traction Inspection**: Bi-weekly ultrasonic flaw detection (USFD) and carbon contact strip wear measurement.
-- **Brake System Calibration**: Electro-pneumatic and regenerative braking profiles must enforce emergency deceleration threshold within **1.3 m/s²**.
-- **Wheel Profile Norms**: Flange height tolerance maintained between 28 mm – 32 mm with tread wear limit of 5 mm before re-profiling on CNC wheel lathe.`,
-    sources: [
-      {
-        docName: 'Pantograph_Inspection_2026_Rev3.pdf',
-        department: 'Rolling Stock',
-        version: 'v3.0',
-        docStatus: 'Current',
-        chunkId: 'Chunk #4 (Page 18)',
-        relevance: '98.4% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Clause 4.2.3: For 25kV AC overhead equipment (OHE) mainline corridors, the maximum permissible cant deficiency for broad gauge (BG) and standard gauge (SG) rolling stock shall not exceed 100mm under normal operating speeds.'
-      },
-      {
-        docName: 'Brake_Disc_Thermal_Analysis_2025.pdf',
-        department: 'Rolling Stock',
-        version: 'v2.0',
-        docStatus: 'Current',
-        chunkId: 'Chunk #8 (Page 12)',
-        relevance: '94.2% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Section 6.1: Full load emergency brake tests require friction lining temperature dissipation not exceeding 380°C under continuous duty cycle.'
-      }
-    ]
-  },
-  'Signaling': {
-    answer: `Based on the CBTC Signaling & Telecommunication System Specifications:
-
-### 1. Interlocking & Fail-Safe Integration
-- **CBTC ATS Server Protocol**: All track circuit clearance telemetry must integrate with the CBTC ATS server to enforce automatic emergency braking (EB) upon threshold violation.
-- **Axle Counter & Zone Redundancy**: Dual-redundant fail-safe processors mandate heartbeat telemetry ping within **50 ms**.
-- **Headway & Dynamic Speed Codes**: Continuous cab-signaling ATP enforces civil speed limits dynamically based on real-time track geometry.
-- **Point Machine Throw**: Throwing force maintained between 450–550 kgf with stroke completion within 3.5 seconds.`,
-    sources: [
-      {
-        docName: 'CBTC_Signaling_Interlocking_Spec_2026.docx',
-        department: 'Signaling',
-        version: 'v2.1',
-        docStatus: 'Current',
-        chunkId: 'Chunk #7 (Page 34)',
-        relevance: '97.1% Match',
-        icon: 'description',
-        iconColor: 'text-[#2B579A]',
-        snippet: 'Appendix B: Automatic Train Supervision (ATS) safety profiles enforce immediate Emergency Brake (EB) triggers when telemetry thresholds are exceeded.'
-      },
-      {
-        docName: 'Point_Machine_Maintenance_Manual.pdf',
-        department: 'Signaling',
-        version: 'v1.4',
-        docStatus: 'Current',
-        chunkId: 'Chunk #3 (Page 15)',
-        relevance: '91.8% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Clause 2.4: Point machine throwing force must maintain between 450-550 kgf with stroke completion within 3.5 seconds.'
-      }
-    ]
-  },
-  'Civil': {
-    answer: `Based on Civil Engineering Track & Structures Manuals:
-
-### 1. Track Geometry & Drainage Standards
-- **Cant Deficiency on Curved Turnouts**: For operation over curved turnouts (1 in 12 or 1 in 8.5), allowable cant deficiency shall not exceed **75 mm**.
-- **Monsoon Track Drainage**: Cross-slope ballast gradients of 1:30 must be clear of silt, and culvert inspections performed weekly during heavy rainfall.
-- **Viaduct & Pier Structural Tolerances**: Permissible differential settlement of elevated piers capped at **5 mm** over a 25-meter span.
-- **Rail Joint Gap Tolerance**: Expansion gap on fishplated joints maintained within 4 mm to 8 mm at standard rail temperatures.`,
-    sources: [
-      {
-        docName: 'Track_Drainage_Monsoon_SOP_Rev4.pdf',
-        department: 'Civil',
-        version: 'v4.0',
-        docStatus: 'Current',
-        chunkId: 'Chunk #12 (Page 9)',
-        relevance: '96.8% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Table 3.1: Special speed restrictions over turnouts (1 in 12 and 1 in 8.5) mandate a reduced cant deficiency limit of 75mm during high-precipitation periods.'
-      },
-      {
-        docName: 'Viaduct_Structural_Health_Checklist.pdf',
-        department: 'Civil',
-        version: 'v2.0',
-        docStatus: 'Current',
-        chunkId: 'Chunk #5 (Page 22)',
-        relevance: '93.5% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Clause 5.1: Bearing displacement and expansion joint gap checks must be recorded quarterly using calibrated digital calipers.'
-      }
-    ]
-  },
-  'Procurement': {
-    answer: `Based on the General Conditions of Contract (GCC) and Metro Procurement Guidelines:
-
-### 1. Contract Terms & Vendor Compliance
-- **Liquidated Damages for Delay**: Capped at **0.5% per week** of delay up to a maximum ceiling of **10%** of total contract value.
-- **Performance Bank Guarantee (PBG)**: 5% of total contract value, valid through the Defect Liability Period (DLP) plus 60 days.
-- **Price Variation Clause (PVC)**: Applies exclusively to contracts with execution tenure exceeding 12 months as per standard RDSO indexing.
-- **Vendor Escalation Matrix**: Severity 1 delivery default triggers automatic contractual notice after 48 hours.`,
-    sources: [
-      {
-        docName: 'GCC_Tender_Conditions_2026.pdf',
-        department: 'Procurement',
-        version: 'v2.0',
-        docStatus: 'Current',
-        chunkId: 'Chunk #9 (Page 41)',
-        relevance: '96.2% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Clause 17.2: Liquidated damages for delayed milestones are calculated at 0.5% per week subject to an aggregate maximum of 10% of the total contract price.'
-      },
-      {
-        docName: 'Vendor_SLA_Escalation_Matrix.xlsx',
-        department: 'Procurement',
-        version: 'v1.1',
-        docStatus: 'Current',
-        chunkId: 'Chunk #2 (Sheet 1)',
-        relevance: '90.7% Match',
-        icon: 'table',
-        iconColor: 'text-[#107C41]',
-        snippet: 'Section 4: Severity 1 spare part supply failure initiates automatic default notice after 48 hours.'
-      }
-    ]
-  },
-  'Safety & Compliance': {
-    answer: `Based on CMRS Safety Circulars and Fire Life Safety Standards:
-
-### 1. Safety Clearances & Emergency Protocols
-- **CMRS Statutory Sanction**: Comprehensive statutory documentation including rolling stock oscillation trials, USFD certificates, and signal safety cases.
-- **Station Evacuation Time**: Underground stations must achieve platform clearance within **4 minutes** and complete station evacuation within **6 minutes**.
-- **Tunnel Ventilation System (TVS)**: Mandates bidirectional airflow velocity of at least **2.5 m/s** in fire mode to control smoke propagation.
-- **Track Intrusion Detection**: Immediate traction power tripping within 200 ms of optical obstacle detection.`,
-    sources: [
-      {
-        docName: 'CMRS_Safety_Clearance_Checklist_2025.pdf',
-        department: 'Safety & Compliance',
-        version: 'v1.3',
-        docStatus: 'Current',
-        chunkId: 'Chunk #1 (Page 4)',
-        relevance: '97.9% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Item 3.2: Comprehensive fire alarm, tunnel booster fan interlocks, and emergency lighting verification required prior to revenue service sanction.'
-      }
-    ]
-  },
-  'Power & Traction': {
-    answer: `Based on 25 kV AC Traction & SCADA Power Distribution SOPs:
-
-### 1. OHE & Substation Operational Norms
-- **OHE Contact Wire Stagger**: Maintained within **±200 mm** on tangent tracks and up to **±300 mm** on curved alignments.
-- **Traction Substation (TSS) Protection**: Dual-redundant numerical distance protection relays must isolate earth faults within **60 ms**.
-- **Minimum Contact Wire Height**: 5.00 meters in tunnels and 5.50 meters in open elevated sections.
-- **SCADA Telemetry Integration**: Real-time circuit breaker status and feeder voltage telemetry over IEC 60870-5-104 protocol to the OCC.`,
-    sources: [
-      {
-        docName: 'OHE_Traction_Maintenance_2026.pdf',
-        department: 'Power & Traction',
-        version: 'v3.0',
-        docStatus: 'Current',
-        chunkId: 'Chunk #6 (Page 14)',
-        relevance: '97.3% Match',
-        icon: 'picture_as_pdf',
-        iconColor: 'text-error',
-        snippet: 'Section 4.1: Minimum height of contact wire above rail level is 5.00 meters in tunnels and 5.50 meters in open sections.'
-      }
-    ]
-  }
-};
 
 const DEPARTMENT_SAMPLE_PROMPTS = {
   'All': [
@@ -311,6 +42,46 @@ const DEPARTMENT_SAMPLE_PROMPTS = {
   ]
 };
 
+// Helper to clean any page references, source citations, note sections, and 'Source X' mentions from generated answer text
+function sanitizeAnswerText(text) {
+  if (!text) return '';
+  return text
+    // 1. Remove trailing Sources/References/Notes section if present at the end
+    .replace(/\n*###?\s*(?:Sources?|References?|Citations?|Notes?|Observations?)\s*[:\n][\s\S]*$/gi, '')
+    // 2. Remove Blockquote Note lines (> **Note**:, > Note:, etc.)
+    .replace(/^\s*>\s*(?:\*\*Note\*\*|\*Note\*|Note)?:?.*$/gim, '')
+    // 3. Remove standalone **Note:** or Note: lines
+    .replace(/^\s*(?:\*\*Note\*\*|\*Note\*|Note)\s*:\s*.*$/gim, '')
+    // 4. Remove Bracketed/Parenthetical Sources: [Source 1], (Source 2), [Source 1, 2], [Sources: 1, 2]
+    .replace(/\[\s*Sources?[:\s]*[\d\s,;&\-and]+\]/gi, '')
+    .replace(/\(\s*Sources?[:\s]*[\d\s,;&\-and]+\)/gi, '')
+    // 5. Remove phrases like 'According to Source 1,', 'From Source 2:', 'In Source 3,'
+    .replace(/\b(?:according to|as per|as stated in|from|in|per)\s+Source\s*\d+\s*[,:]?\s*/gi, '')
+    // 6. Remove standalone 'Source 1:', 'Source 2,', '(Source 1)'
+    .replace(/\bSource\s*\d+[\s,:]*/gi, '')
+    // 7. Remove Page references: (Page 18), Page 1:, on Page 4
+    .replace(/\s*\(\s*Page\s*\d+\s*\)/gi, '')
+    .replace(/,\s*Page\s*\d+/gi, '')
+    .replace(/\b(?:on|in|at)?\s*Page\s*\d+[\s,:]*/gi, '')
+    .replace(/\|\s*Page\s*\d+\s*\|/gi, '|')
+    // 8. Clean dangling punctuation / empty brackets
+    .replace(/\(\s*,\s*/g, '(')
+    .replace(/,\s*\)/g, ')')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\[\s*\]/g, '')
+    .replace(/\s+([.,;:!?])/g, '$1')
+    .replace(/[ \t]+/g, ' ')
+    // 9. Capitalize first letter if source removal left leading lowercase
+    .replace(/(^|\n|-\s*|\*\s*)([a-z])/g, (_, p1, p2) => p1 + p2.toUpperCase())
+    .trim();
+}
+
+// Helper to clean page suffix from chunk labels (e.g. 'Chunk #1 (Page 1)' -> 'Chunk #1')
+function cleanChunkId(chunkId, fallbackIdx = 1) {
+  if (!chunkId) return `Chunk #${fallbackIdx}`;
+  return chunkId.replace(/\s*\([^)]*Page[^)]*\)/gi, '').trim() || `Chunk #${fallbackIdx}`;
+}
+
 // Helper to format inline bold markdown **text** into clean React nodes
 function renderFormattedInlineText(text) {
   const parts = text.split(/(\*\*.*?\*\*)/g);
@@ -328,7 +99,8 @@ function renderFormattedInlineText(text) {
 
 // Markdown Formatter Component for rendering cleaned structured content
 function FormattedAnswer({ content, isStreaming }) {
-  const lines = content.split('\n');
+  const sanitized = sanitizeAnswerText(content);
+  const lines = sanitized.split('\n');
 
   return (
     <div className="flex flex-col gap-2.5 text-body-md text-on-surface leading-relaxed">
@@ -336,21 +108,17 @@ function FormattedAnswer({ content, isStreaming }) {
         const trimmed = line.trim();
         if (!trimmed) return <div key={idx} className="h-1" />;
 
+        // Skip Note sections / Callouts
+        if (trimmed.startsWith('> ') || /^###?\s*Notes?[:\s]*/i.test(trimmed) || /^(?:\*\*Note\*\*|\*Note\*|Note)[:\s]*/i.test(trimmed)) {
+          return null;
+        }
+
         // Subheading (### Title)
         if (trimmed.startsWith('### ')) {
           return (
             <h4 key={idx} className="text-body-lg font-bold text-primary mt-2 mb-1">
               {renderFormattedInlineText(trimmed.replace(/^###\s+/, ''))}
             </h4>
-          );
-        }
-
-        // Callout (> Note)
-        if (trimmed.startsWith('> ')) {
-          return (
-            <div key={idx} className="p-3.5 my-1.5 rounded-xl bg-surface border-l-4 border-secondary border border-outline-variant/40 text-on-surface-variant text-body-sm shadow-2xs">
-              {renderFormattedInlineText(trimmed.replace(/^>\s+/, ''))}
-            </div>
           );
         }
 
@@ -382,15 +150,45 @@ function FormattedAnswer({ content, isStreaming }) {
   );
 }
 
+const STORAGE_KEY_THREAD = 'gyaansetu_search_thread';
+
 export default function SetuSearchPage() {
-  const { documents, departments } = useDocuments();
+  const { documents, departments, isAnyIngesting, ingestingDocs } = useDocuments();
   const [query, setQuery] = useState('');
-  const [thread, setThread] = useState([]);
+  const [thread, setThread] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_THREAD);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Normalize so restored messages don't retain streaming flags
+          return parsed.map(item => ({ ...item, isStreaming: false }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore search thread from localStorage:', e);
+    }
+    return [];
+  });
   const [activeStreamingId, setActiveStreamingId] = useState(null);
   const [includeOlderVersions, setIncludeOlderVersions] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState('All');
   const inputRef = useRef(null);
   const latestMessageRef = useRef(null);
+
+  // Sync thread changes to localStorage
+  useEffect(() => {
+    try {
+      if (thread.length > 0) {
+        const cleanThread = thread.map(item => ({ ...item, isStreaming: false }));
+        localStorage.setItem(STORAGE_KEY_THREAD, JSON.stringify(cleanThread));
+      } else {
+        localStorage.removeItem(STORAGE_KEY_THREAD);
+      }
+    } catch (e) {
+      console.error('Failed to save search thread to localStorage:', e);
+    }
+  }, [thread]);
 
   const availableDepartments = [
     'All',
@@ -401,57 +199,13 @@ export default function SetuSearchPage() {
 
   const activeSamplePrompts = DEPARTMENT_SAMPLE_PROMPTS[selectedDepartment] || DEPARTMENT_SAMPLE_PROMPTS['All'];
 
-  const handleSearch = (searchQuery) => {
+  const handleSearch = async (searchQuery) => {
     const textToSearch = (typeof searchQuery === 'string' ? searchQuery : query).trim();
     if (!textToSearch || activeStreamingId) return;
 
     const newId = 'query_' + Date.now();
     const isHistorical = includeOlderVersions;
-
-    let fullText = isHistorical ? MOCK_ALL_VERSIONS_ANSWER : MOCK_CURRENT_ONLY_ANSWER;
-    let sourcesToUse = isHistorical ? MOCK_ALL_VERSIONS_SOURCES : MOCK_CURRENT_SOURCES;
-
-    if (selectedDepartment !== 'All') {
-      if (DEPARTMENT_MOCK_DATA[selectedDepartment]) {
-        fullText = DEPARTMENT_MOCK_DATA[selectedDepartment].answer;
-        sourcesToUse = DEPARTMENT_MOCK_DATA[selectedDepartment].sources;
-        if (isHistorical) {
-          fullText += `\n\n> **Department Vault Notice**: This query retrieved both active specifications and historical revision records strictly within the **${selectedDepartment}** department.`;
-        }
-      } else {
-        // Fallback for custom added departments
-        fullText = `Based on indexed technical specifications in the **${selectedDepartment}** department:\n\n### 1. Department Specifications & Findings\n- Query strictly bounded to **${selectedDepartment}** records.\n- Cross-referenced telemetry rules, statutory compliance checklists, and operating manuals for ${selectedDepartment}.\n- Telemetry threshold validation confirmed for current operating procedures.`;
-        
-        const matchingDocs = documents.filter(d => (d.department || '').toLowerCase() === selectedDepartment.toLowerCase());
-        if (matchingDocs.length > 0) {
-          sourcesToUse = matchingDocs.map((doc, idx) => ({
-            docName: doc.name || doc.title,
-            department: doc.department || selectedDepartment,
-            version: doc.version || 'v1.0',
-            docStatus: doc.docStatus || 'Current',
-            chunkId: `Chunk #${idx + 1} (Page 1)`,
-            relevance: `${(98 - idx * 3).toFixed(1)}% Match`,
-            icon: 'description',
-            iconColor: 'text-primary',
-            snippet: `Found relevant operational guideline in ${doc.name} under ${selectedDepartment} documentation.`
-          }));
-        } else {
-          sourcesToUse = [
-            {
-              docName: `${selectedDepartment.replace(/\s+/g, '_')}_Manual_2026.pdf`,
-              department: selectedDepartment,
-              version: 'v1.0',
-              docStatus: 'Current',
-              chunkId: 'Chunk #1 (Page 5)',
-              relevance: '95.6% Match',
-              icon: 'description',
-              iconColor: 'text-primary',
-              snippet: `Standard operating procedures and technical norms registered under ${selectedDepartment}.`
-            }
-          ];
-        }
-      }
-    }
+    const currentDepartment = selectedDepartment;
 
     const newEntry = {
       id: newId,
@@ -459,9 +213,9 @@ export default function SetuSearchPage() {
       answer: '',
       isStreaming: true,
       timestamp: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
-      sources: sourcesToUse,
+      sources: [],
       includeOlderVersions: isHistorical,
-      department: selectedDepartment,
+      department: currentDepartment,
     };
 
     setThread(prev => [...prev, newEntry]);
@@ -475,21 +229,39 @@ export default function SetuSearchPage() {
       }
     }, 50);
 
-    // Stream word-by-word with clean chunk updates
-    let currentIndex = 0;
-    const chunkSize = 8;
+    try {
+      const response = await documentService.queryKnowledgeBase(textToSearch, isHistorical, currentDepartment);
 
-    const streamInterval = setInterval(() => {
-      currentIndex += chunkSize;
-      if (currentIndex >= fullText.length) {
-        clearInterval(streamInterval);
-        setThread(prev => prev.map(item => item.id === newId ? { ...item, answer: fullText, isStreaming: false } : item));
-        setActiveStreamingId(null);
-      } else {
-        const currentText = fullText.slice(0, currentIndex);
-        setThread(prev => prev.map(item => item.id === newId ? { ...item, answer: currentText } : item));
-      }
-    }, 18);
+      const fullText = response.answer;
+      const sourcesToUse = response.sources;
+
+      // Update sources immediately
+      setThread(prev => prev.map(item => item.id === newId ? { ...item, sources: sourcesToUse } : item));
+
+      // Stream word-by-word with clean chunk updates
+      let currentIndex = 0;
+      const chunkSize = 8;
+
+      const streamInterval = setInterval(() => {
+        currentIndex += chunkSize;
+        if (currentIndex >= fullText.length) {
+          clearInterval(streamInterval);
+          setThread(prev => prev.map(item => item.id === newId ? { ...item, answer: fullText, isStreaming: false } : item));
+          setActiveStreamingId(null);
+        } else {
+          const currentText = fullText.slice(0, currentIndex);
+          setThread(prev => prev.map(item => item.id === newId ? { ...item, answer: currentText } : item));
+        }
+      }, 18);
+    } catch (error) {
+      console.error("Error fetching AI response:", error);
+      setThread(prev => prev.map(item => item.id === newId ? {
+        ...item,
+        answer: "Sorry, I encountered an error while trying to process your request. Please try again.",
+        isStreaming: false
+      } : item));
+      setActiveStreamingId(null);
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -503,11 +275,16 @@ export default function SetuSearchPage() {
     setThread([]);
     setQuery('');
     setActiveStreamingId(null);
+    try {
+      localStorage.removeItem(STORAGE_KEY_THREAD);
+    } catch (e) {
+      console.error(e);
+    }
     if (inputRef.current) inputRef.current.focus();
   };
 
   return (
-    <div className="flex flex-col w-full gap-6 md:gap-8 max-w-[1400px] mx-auto pb-20">
+    <div className="flex flex-col w-full gap-6 md:gap-8 max-w-[1400px] mx-auto pb-20 min-w-0 overflow-x-hidden">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div className="flex flex-col gap-1">
@@ -529,14 +306,46 @@ export default function SetuSearchPage() {
         )}
       </div>
 
+      {/* Live Background Ingestion Pipeline Status Alert */}
+      {isAnyIngesting && ingestingDocs && ingestingDocs.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[20px] animate-spin">
+                progress_activity
+              </span>
+            </div>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-amber-900">
+                  Document Ingestion &amp; Vector Indexing in Progress
+                </span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-500/30 font-mono">
+                  {ingestingDocs.length} {ingestingDocs.length === 1 ? 'file' : 'files'}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/80 truncate mt-0.5">
+                {ingestingDocs.map(d => `${d.name} (${d.status?.label || 'Processing...'})`).join(' • ')}
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 shrink-0 text-right">
+            <span className="text-[11px] font-semibold text-amber-800 bg-white/70 px-3 py-1.5 rounded-xl border border-amber-500/30 shadow-2xs">
+              Knowledge base updating live
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Hero Search Box (When Thread is Empty) */}
       {thread.length === 0 && (
         <div className="flex flex-col gap-6">
           <div className="bg-surface-container rounded-2xl p-6 md:p-8 border border-outline-variant/40 shadow-sm flex flex-col gap-5">
-            
+
             {/* Integrated Search Bar with Embedded Department Selector */}
             <div className="relative w-full flex items-stretch bg-surface border border-outline-variant rounded-2xl shadow-xs focus-within:border-secondary focus-within:ring-2 focus-within:ring-secondary/20 transition-all overflow-hidden">
-              
+
               {/* Department Dropdown inside the search bar */}
               <div className="flex items-center shrink-0 border-r border-outline-variant/60 bg-surface-container-low/50 px-3.5 hover:bg-surface-container-low transition-colors">
                 <span className="material-symbols-outlined text-secondary text-[20px] mr-2 pointer-events-none">
@@ -574,10 +383,10 @@ export default function SetuSearchPage() {
                       ? "Ask anything across all Metro specifications, SOPs, RDSO standards..."
                       : `Ask anything in ${selectedDepartment}...`
                   }
-                  className="w-full pl-4 pr-32 py-4 bg-transparent border-none text-body-md font-medium text-on-surface focus:outline-none placeholder:text-on-surface-variant/60"
+                  className="w-full pl-4 pr-52 py-4 bg-transparent border-none text-body-md font-medium text-on-surface focus:outline-none placeholder:text-on-surface-variant/60"
                   autoFocus
                 />
-                
+
                 {/* Right Action Controls */}
                 <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                   {/* Historical Toggle */}
@@ -644,15 +453,15 @@ export default function SetuSearchPage() {
 
       {/* Conversational Stream Thread */}
       {thread.length > 0 && (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 w-full min-w-0 max-w-full">
           {thread.map((item, idx) => (
             <div
               key={item.id}
               ref={idx === thread.length - 1 ? latestMessageRef : null}
-              className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-200 scroll-mt-6"
+              className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-200 scroll-mt-6 w-full min-w-0 max-w-full"
             >
               {/* User Query Bubble */}
-              <div className="flex items-start justify-end gap-3">
+              <div className="flex items-start justify-end gap-3 w-full min-w-0">
                 <div className="bg-primary text-on-primary rounded-2xl rounded-tr-sm px-5 py-3.5 max-w-2xl shadow-sm">
                   <div className="flex items-center justify-between gap-4 mb-1 border-b border-white/20 pb-1">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-white/80 flex items-center gap-1">
@@ -677,20 +486,14 @@ export default function SetuSearchPage() {
               </div>
 
               {/* AI Clean Answer Card */}
-              <div className="flex items-start gap-3.5">
+              <div className="flex items-start gap-3.5 w-full min-w-0 max-w-full">
                 <div className="w-10 h-10 rounded-2xl bg-secondary text-on-secondary flex items-center justify-center shrink-0 shadow-sm mt-1">
                   <span className="material-symbols-outlined text-[22px]">smart_toy</span>
                 </div>
 
-                <div className="flex-1 bg-surface-container rounded-2xl rounded-tl-sm p-6 md:p-7 border border-outline-variant/40 shadow-sm flex flex-col gap-5">
+                <div className="flex-1 min-w-0 max-w-full bg-surface-container rounded-2xl rounded-tl-sm p-6 md:p-7 border border-outline-variant/40 shadow-sm flex flex-col gap-5 overflow-hidden">
                   {/* Scope indicator banner */}
                   <div className="flex items-center justify-between pb-2 border-b border-outline-variant/40">
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-secondary text-[18px]">verified</span>
-                      <span className="text-xs font-bold text-on-surface">
-                        Synthesized Answer
-                      </span>
-                    </div>
                     <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-surface border border-outline-variant/60 text-on-surface-variant flex items-center gap-1">
                       <span className="material-symbols-outlined text-[13px] text-secondary">domain</span>
                       Scope: {item.department === 'All' ? 'Cross-Department' : item.department}
@@ -702,24 +505,30 @@ export default function SetuSearchPage() {
 
                   {/* Dedicated Retrieved Sources & Chunks Section */}
                   {item.sources && item.sources.length > 0 && !item.isStreaming && (
-                    <div className="flex flex-col gap-3 pt-4 border-t border-outline-variant/50 animate-in fade-in duration-300">
+                    <div className="flex flex-col gap-3 pt-4 border-t border-outline-variant/50 animate-in fade-in duration-300 w-full min-w-0 max-w-full">
                       <div className="flex items-center justify-between">
                         <span className="text-label-sm font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
                           <span className="material-symbols-outlined text-[17px] text-secondary">source</span>
                           Retrieved Sources &amp; Knowledge Chunks ({item.sources.length})
                         </span>
-                        <span className="text-[11px] text-on-surface-variant font-medium">
-                          {item.department === 'All' ? 'All indexed departments' : `${item.department} vault`}
+                        <span className="text-[11px] text-on-surface-variant font-medium flex items-center gap-1">
+                          {item.sources.length > 3 && (
+                            <span className="hidden sm:inline-flex items-center gap-0.5 text-secondary mr-1">
+                              <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                            </span>
+                          )}
+                          <span>{item.department === 'All' ? 'All indexed departments' : `${item.department} vault`}</span>
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {/* Horizontal Scrolling Chunk Carousel (3 visible per row by default) */}
+                      <div className="w-full min-w-0 max-w-full flex items-stretch gap-3.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-outline-variant/60 hover:scrollbar-thumb-outline-variant snap-x">
                         {item.sources.map((src, sIdx) => {
                           const isOlder = src.docStatus === 'Older Version';
                           return (
                             <div
                               key={sIdx}
-                              className={`bg-surface rounded-xl p-3.5 border shadow-2xs transition-all flex flex-col gap-2 group ${
+                              className={`w-full min-w-[280px] sm:min-w-[320px] md:min-w-[calc(33.333%-10px)] max-w-[420px] shrink-0 snap-start bg-surface rounded-xl p-3.5 border shadow-2xs transition-all flex flex-col justify-between gap-2.5 group ${
                                 isOlder
                                   ? 'border-amber-300/70 bg-amber-50/20 hover:border-amber-400'
                                   : 'border-outline-variant/60 hover:shadow-xs'
@@ -749,7 +558,7 @@ export default function SetuSearchPage() {
                                       <span className={`w-1.5 h-1.5 min-w-[6px] min-h-[6px] aspect-square rounded-full shrink-0 ${isOlder ? 'bg-amber-600' : 'bg-emerald-600'}`}></span>
                                       <span>{isOlder ? 'Replaced' : 'Active'}</span>
                                     </span>
-                                    <span className="font-mono text-secondary font-semibold">{src.chunkId}</span>
+                                    <span className="font-mono text-secondary font-semibold">{cleanChunkId(src.chunkId, sIdx + 1)}</span>
                                     <span>•</span>
                                     <span className="text-emerald-700 font-semibold">{src.relevance}</span>
                                   </div>
@@ -757,7 +566,7 @@ export default function SetuSearchPage() {
                               </div>
 
                               {/* Chunk Text Snippet */}
-                              <p className="text-[11.5px] text-on-surface-variant/90 leading-snug bg-surface-container-low p-2.5 rounded-lg border border-outline-variant/30 italic">
+                              <p className="text-[11.5px] text-on-surface-variant/90 leading-snug bg-surface-container-low p-2.5 rounded-lg border border-outline-variant/30 italic flex-1">
                                 "{src.snippet}"
                               </p>
                             </div>
@@ -774,10 +583,10 @@ export default function SetuSearchPage() {
           {/* Inline Bottom Search Input for Consecutive Questions */}
           <div className="w-full pt-2">
             <div className="bg-surface-container rounded-2xl p-5 md:p-6 border border-outline-variant/40 shadow-sm flex flex-col gap-4">
-              
+
               {/* Integrated Bottom Search Bar with Embedded Department Selector */}
               <div className="relative w-full flex items-stretch bg-surface border border-outline-variant rounded-2xl shadow-xs focus-within:border-secondary focus-within:ring-2 focus-within:ring-secondary/20 transition-all overflow-hidden">
-                
+
                 {/* Department Dropdown inside the bottom search bar */}
                 <div className="flex items-center shrink-0 border-r border-outline-variant/60 bg-surface-container-low/50 px-3 hover:bg-surface-container-low transition-colors">
                   <span className="material-symbols-outlined text-secondary text-[18px] mr-1.5 pointer-events-none">
@@ -819,10 +628,10 @@ export default function SetuSearchPage() {
                           ? "Ask another question across Metro manuals (Press Enter)..."
                           : `Ask another question in ${selectedDepartment}...`
                     }
-                    className="w-full pl-3.5 pr-32 py-3.5 bg-transparent border-none text-body-md font-medium text-on-surface focus:outline-none placeholder:text-on-surface-variant/60"
+                    className="w-full pl-3.5 pr-52 py-3.5 bg-transparent border-none text-body-md font-medium text-on-surface focus:outline-none placeholder:text-on-surface-variant/60"
                     autoFocus
                   />
-                  
+
                   {/* Right Action Controls */}
                   <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
                     {/* Historical Toggle */}

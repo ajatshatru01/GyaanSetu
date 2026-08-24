@@ -10,6 +10,8 @@ export default function DocumentVersionsPage() {
     tags,
     departments,
     activeUpload,
+    isAnyIngesting,
+    ingestingDocs,
     handleUpdateDocumentStatus,
     handleReorderDocuments,
     handleCreateDepartment,
@@ -301,6 +303,38 @@ export default function DocumentVersionsPage() {
           </p>
         </div>
       </div>
+
+      {/* Live Background Ingestion Pipeline Status Alert */}
+      {isAnyIngesting && ingestingDocs && ingestingDocs.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-300 shadow-2xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-800 flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-[20px] animate-spin">
+                progress_activity
+              </span>
+            </div>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-amber-900">
+                  Document Ingestion &amp; Version Indexing in Progress
+                </span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-900 border border-amber-500/30 font-mono">
+                  {ingestingDocs.length} {ingestingDocs.length === 1 ? 'file processing' : 'files processing'}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/80 truncate mt-0.5">
+                {ingestingDocs.map(d => `${d.name} (${d.status?.label || 'Processing...'})`).join(' • ')}
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 shrink-0 text-right">
+            <span className="text-[11px] font-semibold text-amber-800 bg-white/70 px-3 py-1.5 rounded-xl border border-amber-500/30 shadow-2xs">
+              Knowledge base updating live
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -676,66 +710,79 @@ export default function DocumentVersionsPage() {
                 {/* 2. Timeline Tree Body matching wireframe */}
                 <div className="p-6 md:p-8 flex flex-col">
                   {/* Realtime Ingestion Progress Card when a new revision is being uploaded/processed for this group */}
-                  {activeUpload && (
-                    (activeUpload.lineageId && activeUpload.lineageId === groupKey) ||
-                    (activeDoc.lineageId && activeUpload.lineageId === activeDoc.lineageId) ||
-                    (activeUpload.name && activeDoc.name && activeUpload.name.trim().toLowerCase() === activeDoc.name.trim().toLowerCase())
-                  ) && (
-                    <div className="flex flex-col mb-4 animate-in fade-in zoom-in-95 duration-200">
-                      <div className="flex items-start gap-4 sm:gap-5">
-                        <div className="flex flex-col items-center shrink-0 pt-0.5">
-                          <div className="w-7 h-7 min-w-[28px] min-h-[28px] aspect-square rounded-full bg-secondary/15 border-2 border-secondary text-secondary flex items-center justify-center shadow-xs shrink-0">
-                            <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                  {(() => {
+                    const processingDocInGroup = groupDocs.find(d => d.status?.type === 'processing' || (d.status?.label || '').includes('...'));
+                    const isGroupActiveUpload = activeUpload && (
+                      (activeUpload.lineageId && activeUpload.lineageId === groupKey) ||
+                      (activeDoc.lineageId && activeUpload.lineageId === activeDoc.lineageId) ||
+                      (activeUpload.name && activeDoc.name && activeUpload.name.trim().toLowerCase() === activeDoc.name.trim().toLowerCase())
+                    );
+
+                    if (!isGroupActiveUpload && !processingDocInGroup) return null;
+
+                    const displayDocName = isGroupActiveUpload ? activeUpload.name : processingDocInGroup.name;
+                    const displayVersion = isGroupActiveUpload ? activeUpload.version : (processingDocInGroup.version || 'v1.1');
+                    const displayProgress = isGroupActiveUpload ? activeUpload.progress : (processingDocInGroup.status?.percentage || 65);
+                    const displayStage = isGroupActiveUpload ? (activeUpload.stage || 'Extracting Layout & Text Layers...') : (processingDocInGroup.status?.label || 'Creating Chunks & Generating Embeddings...');
+
+                    return (
+                      <div className="flex flex-col mb-4 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex items-start gap-4 sm:gap-5">
+                          <div className="flex flex-col items-center shrink-0 pt-0.5">
+                            <div className="w-7 h-7 min-w-[28px] min-h-[28px] aspect-square rounded-full bg-secondary/15 border-2 border-secondary text-secondary flex items-center justify-center shadow-xs shrink-0">
+                              <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex-1 p-4 sm:p-5 rounded-2xl border border-secondary/40 bg-secondary/5 shadow-sm">
-                          <div className="flex flex-col gap-2.5">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-secondary text-on-secondary animate-pulse flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                                  Ingesting New Revision
-                                </span>
-                                <span className="font-bold text-primary text-body-md truncate">{activeUpload.name}</span>
-                                <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-surface border border-outline-variant/60 font-bold text-primary">
-                                  {activeUpload.version}
-                                </span>
+                          <div className="flex-1 p-4 sm:p-5 rounded-2xl border border-secondary/40 bg-secondary/5 shadow-sm">
+                            <div className="flex flex-col gap-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-secondary text-on-secondary animate-pulse flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                                    Ingesting New Revision
+                                  </span>
+                                  <span className="font-bold text-primary text-body-md truncate">{displayDocName}</span>
+                                  <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-surface border border-outline-variant/60 font-bold text-primary">
+                                    {displayVersion}
+                                  </span>
+                                </div>
+                                <span className="font-mono text-xs font-bold text-secondary">{displayProgress}%</span>
                               </div>
-                              <span className="font-mono text-xs font-bold text-secondary">{activeUpload.progress}%</span>
-                            </div>
-                            <div className="w-full bg-surface-container-high rounded-full h-2 overflow-hidden border border-outline-variant/30">
-                              <div
-                                className="bg-secondary h-2 rounded-full transition-all duration-300"
-                                style={{ width: `${activeUpload.progress}%` }}
-                              ></div>
-                            </div>
-                            <div className="flex items-center justify-between text-xs text-on-surface-variant">
-                              <span className="flex items-center gap-1.5">
-                                <span className="material-symbols-outlined text-[14px] text-secondary animate-spin">sync</span>
-                                {activeUpload.stage || 'Extracting Layout & Text Layers...'}
-                              </span>
-                              <span className="italic">Embedding into vector store...</span>
+                              <div className="w-full bg-surface-container-high rounded-full h-2 overflow-hidden border border-outline-variant/30">
+                                <div
+                                  className="bg-secondary h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${displayProgress}%` }}
+                                ></div>
+                              </div>
+                              <div className="flex items-center justify-between text-xs text-on-surface-variant">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="material-symbols-outlined text-[14px] text-secondary animate-spin">sync</span>
+                                  {displayStage}
+                                </span>
+                                <span className="italic">Embedding into vector store...</span>
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                      {/* Upward connector line */}
-                      <div className="flex items-center gap-4 sm:gap-5 my-1">
-                        <div className="w-7 flex flex-col items-center justify-center shrink-0">
-                          <span className="material-symbols-outlined text-[14px] text-secondary -mb-1 font-bold animate-bounce">
-                            arrow_upward
-                          </span>
-                          <div className="w-0.5 h-6 bg-secondary/60"></div>
+                        {/* Upward connector line */}
+                        <div className="flex items-center gap-4 sm:gap-5 my-1">
+                          <div className="w-7 flex flex-col items-center justify-center shrink-0">
+                            <span className="material-symbols-outlined text-[14px] text-secondary -mb-1 font-bold animate-bounce">
+                              arrow_upward
+                            </span>
+                            <div className="w-0.5 h-6 bg-secondary/60"></div>
+                          </div>
+                          <div className="text-[11px] text-secondary font-mono font-medium pl-1">
+                            Superseding previous version below
+                          </div>
                         </div>
-                        <div className="text-[11px] text-secondary font-mono font-medium pl-1">
-                          Superseding previous version below
-                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {groupDocs.map((doc, idx) => {
                     const isCurrent = doc.docStatus === 'Current' || doc.docStatus === 'Active';
+                    const isProcessing = doc.status?.type === 'processing' || (doc.status?.label || '').includes('...');
                     const { date, time } = formatDateTime(doc.uploadedAt);
                     const isLastItem = idx === groupDocs.length - 1;
                     const isDragging = draggedDocId === doc.id;
@@ -747,7 +794,7 @@ export default function DocumentVersionsPage() {
                         className={`flex flex-col transition-all duration-150 ${
                           isDragging ? 'opacity-40 scale-[0.98]' : ''
                         }`}
-                        draggable={!isCurrent}
+                        draggable={!isCurrent && !isProcessing}
                         onDragStart={(e) => handleDragStart(e, doc)}
                         onDragOver={(e) => handleDragOver(e, doc)}
                         onDragLeave={handleDragLeave}
@@ -758,7 +805,11 @@ export default function DocumentVersionsPage() {
                         <div className="flex items-start gap-4 sm:gap-5">
                           {/* Left Status Icon Node */}
                           <div className="flex flex-col items-center shrink-0 pt-0.5">
-                            {isCurrent ? (
+                            {isProcessing ? (
+                              <div className="w-7 h-7 min-w-[28px] min-h-[28px] aspect-square rounded-full bg-secondary/15 border-2 border-secondary text-secondary flex items-center justify-center shadow-xs shrink-0">
+                                <span className="material-symbols-outlined text-[15px] animate-spin">progress_activity</span>
+                              </div>
+                            ) : isCurrent ? (
                               <div className="w-7 h-7 min-w-[28px] min-h-[28px] aspect-square rounded-full bg-emerald-500/15 border-2 border-emerald-600 text-emerald-700 flex items-center justify-center shadow-xs shrink-0">
                                 <span className="w-2.5 h-2.5 min-w-[10px] min-h-[10px] aspect-square rounded-full bg-emerald-600 shrink-0"></span>
                               </div>
@@ -771,7 +822,9 @@ export default function DocumentVersionsPage() {
 
                           {/* File Content Card */}
                           <div className={`flex-1 p-4 sm:p-5 rounded-2xl border transition-all ${
-                            isCurrent
+                            isProcessing
+                              ? 'bg-surface border-secondary/50 shadow-sm ring-1 ring-secondary/20'
+                              : isCurrent
                               ? 'bg-surface border-emerald-500/40 shadow-sm ring-1 ring-emerald-500/20'
                               : isDragOver
                               ? 'bg-secondary/10 border-2 border-secondary ring-2 ring-secondary/20 shadow-md'
@@ -782,7 +835,7 @@ export default function DocumentVersionsPage() {
                                 {/* Title Line with Version badge */}
                                 <div className="flex flex-wrap items-center gap-2.5">
                                   {/* Drag Handle Indicator (Only for draggable replaced revisions) */}
-                                  {!isCurrent && (
+                                  {!isCurrent && !isProcessing && (
                                     <div
                                       className="cursor-grab active:cursor-grabbing text-on-surface-variant/50 hover:text-on-surface p-1 rounded hover:bg-surface-container transition-colors flex items-center shrink-0"
                                       title="Drag to reorder precedence of this historical version"
@@ -792,11 +845,18 @@ export default function DocumentVersionsPage() {
                                   )}
 
                                   <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md inline-flex items-center gap-1.5 ${
-                                    isCurrent
+                                    isProcessing
+                                      ? 'bg-secondary/10 text-secondary border border-secondary/30 animate-pulse'
+                                      : isCurrent
                                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                                       : 'bg-amber-50 text-amber-800 border border-amber-200'
                                   }`}>
-                                    {isCurrent ? (
+                                    {isProcessing ? (
+                                      <>
+                                        <span className="material-symbols-outlined text-[13px] animate-spin">progress_activity</span>
+                                        <span>{doc.status?.label || 'Indexing...'}</span>
+                                      </>
+                                    ) : isCurrent ? (
                                       <>
                                         <span className="w-2 h-2 min-w-[8px] min-h-[8px] aspect-square rounded-full bg-emerald-600 shrink-0"></span>
                                         <span>Current Active</span>
