@@ -21,21 +21,52 @@ def get_converter():
 
 def extract_fallback_pdf_pages(file_path: str) -> list[str]:
     pages = []
+    # 1. Try pypdf
     try:
         import pypdf
         reader = pypdf.PdfReader(file_path)
         for page in reader.pages:
             text = page.extract_text() or ""
             pages.append(text)
+        if any(p.strip() for p in pages):
+            return pages
     except Exception:
-        try:
-            import PyPDF2
-            reader = PyPDF2.PdfReader(file_path)
-            for page in reader.pages:
-                text = page.extract_text() or ""
-                pages.append(text)
-        except Exception:
-            pass
+        pass
+
+    # 2. Try PyMuPDF (fitz)
+    try:
+        import fitz
+        doc = fitz.open(file_path)
+        for page in doc:
+            pages.append(page.get_text() or "")
+        if any(p.strip() for p in pages):
+            return pages
+    except Exception:
+        pass
+
+    # 3. Try pdfplumber
+    try:
+        import pdfplumber
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                pages.append(page.extract_text() or "")
+        if any(p.strip() for p in pages):
+            return pages
+    except Exception:
+        pass
+
+    # 4. Try PyPDF2
+    try:
+        import PyPDF2
+        reader = PyPDF2.PdfReader(file_path)
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            pages.append(text)
+        if any(p.strip() for p in pages):
+            return pages
+    except Exception:
+        pass
+
     return pages
 
 
@@ -106,17 +137,20 @@ def extract_markdown_with_pages(docling_doc, file_path: str = "") -> str:
             current_page = None
 
             for item, level in docling_doc.iterate_items():
-                # Extract page number from provenance
-                page_no = 1
+                # Extract page number from provenance ONLY if explicitly provided
+                item_page = None
                 if hasattr(item, "prov") and item.prov:
                     for p in item.prov:
-                        if hasattr(p, "page_no") and p.page_no:
-                            page_no = p.page_no
-                            break
+                        if hasattr(p, "page_no") and p.page_no is not None:
+                            try:
+                                item_page = int(p.page_no)
+                                break
+                            except (ValueError, TypeError):
+                                pass
 
-                # When encountering a new page, emit page boundary comment
-                if page_no != current_page:
-                    current_page = page_no
+                # Only change page and emit boundary when provenance explicitly gives a new page
+                if item_page is not None and item_page != current_page:
+                    current_page = item_page
                     lines.append(f"\n<!-- page {current_page} -->\n")
 
                 # Export element content
@@ -146,7 +180,21 @@ def extract_markdown_with_pages(docling_doc, file_path: str = "") -> str:
         except Exception as e:
             logger.warning(f"iterate_items page extraction error: {e}")
 
-    # 3. If standard export_to_markdown exists, check for page breaks
+    # 3. Fallback reading directly from PDF if available
+    if file_path and os.path.exists(file_path):
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == ".pdf":
+            pdf_pages = extract_fallback_pdf_pages(file_path)
+            if pdf_pages and len(pdf_pages) > 1:
+                parts = []
+                for idx, pt in enumerate(pdf_pages, 1):
+                    clean_pt = pt.strip()
+                    if clean_pt:
+                        parts.append(f"<!-- page {idx} -->\n{clean_pt}")
+                if parts:
+                    return "\n\n".join(parts)
+
+    # 4. If standard export_to_markdown exists, check for page breaks
     if hasattr(docling_doc, "export_to_markdown"):
         try:
             std_md = docling_doc.export_to_markdown()
@@ -163,7 +211,7 @@ def extract_markdown_with_pages(docling_doc, file_path: str = "") -> str:
         except Exception as e:
             logger.warning(f"Standard export_to_markdown error: {e}")
 
-    # 4. Fallback reading from file if available
+    # 5. Last resort single-page fallback
     if file_path and os.path.exists(file_path):
         ext = os.path.splitext(file_path)[1].lower()
         if ext == ".pdf":

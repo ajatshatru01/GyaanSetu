@@ -2,75 +2,66 @@
  * Document Service Layer
  *
  * Centralized service managing Document Hub data.
- * Currently uses localStorage for local persistence.
- *
- * SCALABILITY NOTE:
- * When connecting to your FastAPI / Node / Django / VectorDB backend:
- * simply replace the localStorage logic inside these functions with
- * fetch('/api/documents') or axios calls. The React UI components will remain unchanged.
+ * Now connected to the FastAPI backend!
  */
 
-const STORAGE_KEYS = {
-  DOCUMENTS: 'gyaansetu_documents_v1',
-  TAGS: 'gyaansetu_tags_v1',
-  DEPARTMENTS: 'gyaansetu_departments_v1',
-};
-
-const DEFAULT_TAGS = [
-  { id: 'tender_gcc', label: 'Tender / GCC', bgClass: 'bg-transparent', borderClass: 'border-[#1d4ed8]', textClass: 'text-[#1d4ed8]', hex: '#1d4ed8' },
-  { id: 'cmrs_safety', label: 'CMRS Safety', bgClass: 'bg-transparent', borderClass: 'border-[#0e7490]', textClass: 'text-[#0e7490]', hex: '#0e7490' },
-  { id: 'high_priority', label: 'High Priority', bgClass: 'bg-transparent', borderClass: 'border-[#dc2626]', textClass: 'text-[#dc2626]', hex: '#dc2626' },
-  { id: 'monsoon_sop', label: 'Monsoon SOP', bgClass: 'bg-transparent', borderClass: 'border-[#d97706]', textClass: 'text-[#d97706]', hex: '#d97706' },
-  { id: 'vendor_sla', label: 'Vendor SLA', bgClass: 'bg-transparent', borderClass: 'border-[#c2410c]', textClass: 'text-[#c2410c]', hex: '#c2410c' },
-];
-
-const DEPARTMENTS = [
-  'Rolling Stock',
-  'Signaling',
-  'Civil',
-  'Procurement',
-  'Safety & Compliance',
-  'Power & Traction',
-];
-
-const DEFAULT_DOCUMENTS = [];
+const API_BASE = '/api';
 
 export const documentService = {
   // Fetch all documents
   async getDocuments() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(DEFAULT_DOCUMENTS));
-        return DEFAULT_DOCUMENTS;
-      }
-      return JSON.parse(data);
+      const res = await fetch(`${API_BASE}/documents/`);
+      if (!res.ok) throw new Error('Failed to fetch documents');
+      return await res.json();
     } catch (err) {
-      console.error('Error loading documents from storage:', err);
-      return DEFAULT_DOCUMENTS;
+      console.error('Error loading documents:', err);
+      return [];
     }
   },
 
-  // Save or add a new document
-  async saveDocument(doc) {
+  // Upload a new document (used by startDocumentUpload in context)
+  async uploadDocument(file, formDataObj) {
     try {
-      const docs = await this.getDocuments();
-      const updated = [doc, ...docs];
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updated));
-      return doc;
+      const formData = new FormData();
+      formData.append('file', file);
+
+      for (const [key, value] of Object.entries(formDataObj)) {
+        if (value !== undefined && value !== null) {
+          if (typeof value === 'object') {
+            formData.append(key, JSON.stringify(value));
+          } else {
+            formData.append(key, value);
+          }
+        }
+      }
+
+      const res = await fetch(`${API_BASE}/documents/`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(`Failed to upload document: ${errorText}`);
+      }
+      return await res.json();
     } catch (err) {
-      console.error('Error saving document to storage:', err);
-      return doc;
+      console.error('Error uploading document:', err);
+      throw err;
     }
+  },
+
+  // (Deprecated for direct use: now using uploadDocument for real API)
+  async saveDocument(doc) {
+    // Left for fallback if needed, but Context will be updated to use uploadDocument
+    return doc;
   },
 
   // Delete a document by ID
   async deleteDocument(id) {
     try {
-      const docs = await this.getDocuments();
-      const updated = docs.filter(d => d.id !== id);
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updated));
-      return true;
+      const res = await fetch(`${API_BASE}/documents/${id}?force=true`, { method: 'DELETE' });
+      return res.ok;
     } catch (err) {
       console.error('Error deleting document:', err);
       return false;
@@ -80,10 +71,13 @@ export const documentService = {
   // Update a document by ID
   async updateDocument(id, updates) {
     try {
-      const docs = await this.getDocuments();
-      const updated = docs.map(d => d.id === id ? { ...d, ...updates } : d);
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updated));
-      return updated.find(d => d.id === id);
+      const res = await fetch(`${API_BASE}/documents/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error('Failed to update document');
+      return await res.json();
     } catch (err) {
       console.error('Error updating document:', err);
       return null;
@@ -91,41 +85,39 @@ export const documentService = {
   },
 
   // Update status of document ('Current' | 'Older Version')
-  // Enforces that only ONE document in the same lineage (by lineageId OR by filename) can be Current at a time.
   async updateDocumentStatus(id, status) {
     try {
       const targetStatus = (status === 'Active' || status === 'Current') ? 'Current' : 'Older Version';
-      const docs = await this.getDocuments();
-      const targetDoc = docs.find(d => d.id === id);
-      if (!targetDoc) return null;
-
-      const targetLineageId = targetDoc.lineageId || targetDoc.id;
-      const targetName = (targetDoc.name || '').trim().toLowerCase();
-
-      const updatedDocs = docs.map(d => {
-        if (d.id === id) {
-          return { ...d, docStatus: targetStatus, lineageId: targetLineageId };
-        }
-        // If making targetDoc Current, any other document in the SAME lineage (same lineageId OR same filename) that is Current becomes Older Version
-        if (targetStatus === 'Current') {
-          const docLineageId = d.lineageId || d.id;
-          const docName = (d.name || '').trim().toLowerCase();
-          const isSameLineage = (targetLineageId && docLineageId === targetLineageId) || (targetName && docName === targetName);
-
-          if (isSameLineage) {
-            const isDocCurrent = d.docStatus === 'Current' || d.docStatus === 'Active';
-            if (isDocCurrent) {
-              return { ...d, docStatus: 'Older Version', lineageId: targetLineageId };
-            }
-          }
-        }
-        return d;
+      const res = await fetch(`${API_BASE}/documents/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: targetStatus }),
       });
-
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updatedDocs));
-      return updatedDocs;
+      if (!res.ok) throw new Error('Failed to update status');
+      return await res.json(); // Backend returns the full list of updated docs
     } catch (err) {
       console.error('Error updating document status:', err);
+      return null;
+    }
+  },
+
+  // Reorder multiple documents
+  async reorderDocuments(documents) {
+    try {
+      const res = await fetch(`${API_BASE}/documents/reorder`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          documents: documents.map((d, index) => ({
+            id: d.id,
+            order_index: index,
+          }))
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to reorder documents');
+      return await res.json();
+    } catch (err) {
+      console.error('Error reordering documents:', err);
       return null;
     }
   },
@@ -161,79 +153,39 @@ export const documentService = {
     );
   },
 
-  // Fetch all tags (predefined + user created)
+  // Fetch all tags
   async getTags() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.TAGS);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.TAGS, JSON.stringify(DEFAULT_TAGS));
-        return DEFAULT_TAGS;
-      }
-      const parsed = JSON.parse(data);
-      // Normalize any older or low-contrast colors to vivid, high-contrast palette
-      const normalized = parsed.map(tag => {
-        if (tag.hex === '#8a5100' || tag.id === 'vendor_sla') {
-          return { ...tag, hex: '#c2410c', textClass: 'text-[#c2410c]', borderClass: 'border-[#c2410c]' };
-        }
-        if (tag.hex === '#00629e') {
-          return { ...tag, hex: '#1d4ed8', textClass: 'text-[#1d4ed8]', borderClass: 'border-[#1d4ed8]' };
-        }
-        if (tag.hex === '#ba1a1a') {
-          return { ...tag, hex: '#dc2626', textClass: 'text-[#dc2626]', borderClass: 'border-[#dc2626]' };
-        }
-        if (tag.hex === '#b87d00') {
-          return { ...tag, hex: '#d97706', textClass: 'text-[#d97706]', borderClass: 'border-[#d97706]' };
-        }
-        return tag;
-      });
-      return normalized;
+      const res = await fetch(`${API_BASE}/tags/`);
+      if (!res.ok) throw new Error('Failed to fetch tags');
+      return await res.json();
     } catch (err) {
       console.error('Error loading tags:', err);
-      return DEFAULT_TAGS;
+      return [];
     }
   },
 
-  // Create and persist a new custom tag
+  // Create a new custom tag
   async createTag(newTag) {
     try {
-      const tags = await this.getTags();
-      const tagExists = tags.some(t => t.label.toLowerCase() === newTag.label.toLowerCase());
-      if (tagExists) return tags.find(t => t.label.toLowerCase() === newTag.label.toLowerCase());
-
-      const updated = [...tags, newTag];
-      localStorage.setItem(STORAGE_KEYS.TAGS, JSON.stringify(updated));
-      return newTag;
+      const res = await fetch(`${API_BASE}/tags/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTag),
+      });
+      if (!res.ok) throw new Error('Failed to create tag');
+      return await res.json();
     } catch (err) {
       console.error('Error creating tag:', err);
       return newTag;
     }
   },
 
-  // Delete a tag by ID and clean it up from storage and documents
+  // Delete a tag by ID
   async deleteTag(tagId) {
     try {
-      const tags = await this.getTags();
-      const updatedTags = tags.filter(t => t.id !== tagId);
-      localStorage.setItem(STORAGE_KEYS.TAGS, JSON.stringify(updatedTags));
-
-      // Also clean up this tag from any existing documents
-      const docs = await this.getDocuments();
-      let changed = false;
-      const updatedDocs = docs.map(doc => {
-        if (doc.tags && doc.tags.some(t => t.id === tagId)) {
-          changed = true;
-          return {
-            ...doc,
-            tags: doc.tags.filter(t => t.id !== tagId)
-          };
-        }
-        return doc;
-      });
-      if (changed) {
-        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updatedDocs));
-      }
-
-      return true;
+      const res = await fetch(`${API_BASE}/tags/${tagId}`, { method: 'DELETE' });
+      return res.ok;
     } catch (err) {
       console.error('Error deleting tag:', err);
       return false;
@@ -243,15 +195,12 @@ export const documentService = {
   // Update document tags
   async updateDocumentTags(docId, newTags) {
     try {
-      const docs = await this.getDocuments();
-      const updatedDocs = docs.map(doc => {
-        if (doc.id === docId) {
-          return { ...doc, tags: newTags };
-        }
-        return doc;
+      const res = await fetch(`${API_BASE}/documents/${docId}/tags`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: newTags }),
       });
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updatedDocs));
-      return true;
+      return res.ok;
     } catch (err) {
       console.error('Error updating document tags:', err);
       return false;
@@ -261,49 +210,44 @@ export const documentService = {
   // Update document department
   async updateDocumentDepartment(docId, newDepartment) {
     try {
-      const docs = await this.getDocuments();
-      const updatedDocs = docs.map(doc => {
-        if (doc.id === docId) {
-          return { ...doc, department: newDepartment };
-        }
-        return doc;
+      const res = await fetch(`${API_BASE}/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ department: newDepartment }),
       });
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(updatedDocs));
-      return true;
+      return res.ok;
     } catch (err) {
       console.error('Error updating document department:', err);
       return false;
     }
   },
 
-  // Get list of standard and custom departments
+  // Get list of departments (mapping objects to string names for backward compatibility)
   async getDepartments() {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DEPARTMENTS);
-      if (!data) {
-        localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(DEPARTMENTS));
-        return DEPARTMENTS;
-      }
-      return JSON.parse(data);
+      const res = await fetch(`${API_BASE}/departments/`);
+      if (!res.ok) throw new Error('Failed to fetch departments');
+      const data = await res.json();
+      // Keep a hidden map to translate names to IDs for deletion
+      this._departmentsCache = data;
+      return data.map(d => d.name);
     } catch (err) {
       console.error('Error loading departments:', err);
-      return DEPARTMENTS;
+      return [];
     }
   },
 
-  // Create and persist a new department
+  // Create a new department
   async createDepartment(newDeptName) {
     try {
-      const depts = await this.getDepartments();
-      const trimmed = (newDeptName || '').trim();
-      if (!trimmed) return null;
-      const existing = depts.find(d => d.toLowerCase() === trimmed.toLowerCase());
-      if (existing) {
-        return existing;
-      }
-      const updated = [...depts, trimmed];
-      localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(updated));
-      return trimmed;
+      const res = await fetch(`${API_BASE}/departments/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newDeptName, description: '' }),
+      });
+      if (!res.ok) throw new Error('Failed to create department');
+      const data = await res.json();
+      return data.name;
     } catch (err) {
       console.error('Error creating department:', err);
       return newDeptName;
@@ -313,15 +257,19 @@ export const documentService = {
   // Delete department if no files belong to it
   async deleteDepartment(deptName) {
     try {
-      const docs = await this.getDocuments();
-      const trimmed = (deptName || '').trim().toLowerCase();
-      const hasFiles = docs.some(d => (d.department || '').trim().toLowerCase() === trimmed);
-      if (hasFiles) {
-        return { success: false, error: `Cannot delete '${deptName}' because documents are associated with it.` };
+      // Find the ID of the department
+      const cache = this._departmentsCache || [];
+      const deptObj = cache.find(d => d.name.trim().toLowerCase() === deptName.trim().toLowerCase());
+
+      if (!deptObj) {
+        return { success: false, error: 'Department not found in cache' };
       }
-      const depts = await this.getDepartments();
-      const updated = depts.filter(d => d.trim().toLowerCase() !== trimmed);
-      localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(updated));
+
+      const res = await fetch(`${API_BASE}/departments/${deptObj.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        return { success: false, error: errorData.detail || 'Failed to delete department (might be in use)' };
+      }
       return { success: true };
     } catch (err) {
       console.error('Error deleting department:', err);
@@ -336,5 +284,44 @@ export const documentService = {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  },
+
+  async queryKnowledgeBase(query, includeOlderVersions = false, department = null) {
+    try {
+      const payload = {
+        query,
+        include_older_versions: includeOlderVersions,
+      };
+      if (department && department !== 'All') {
+        payload.department = department;
+      }
+
+      const res = await fetch(`${API_BASE}/query/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        throw new Error('Failed to fetch query response');
+      }
+      return await res.json();
+    } catch (error) {
+      console.error('Error querying knowledge base:', error);
+      throw error;
+    }
+  },
+
+  // Fetch live system diagnostics telemetry
+  async getDiagnostics() {
+    try {
+      const res = await fetch(`${API_BASE}/diagnostics/`);
+      if (!res.ok) throw new Error('Failed to fetch system diagnostics');
+      return await res.json();
+    } catch (err) {
+      console.error('Error loading diagnostics:', err);
+      return null;
+    }
   }
 };
+
+export default documentService;
