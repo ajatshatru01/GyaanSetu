@@ -220,6 +220,32 @@ def test_query_endpoint():
     assert "sources" in data
 
 
+def test_page_number_extraction_and_chunking():
+    from app.ingestion.chunker import create_chunks
+    from app.ingestion.parser import FallbackDoc, extract_markdown_with_pages
+
+    # Test FallbackDoc with multiple pages
+    sample_pages = [
+        "First page content detailing rolling stock traction parameters.",
+        "Second page content covering speed restrictions on 1 in 12 turnouts.",
+        "Third page content describing CBTC signaling safety clearance."
+    ]
+    doc = FallbackDoc(text="\n\n".join(sample_pages), page_texts=sample_pages)
+    md = extract_markdown_with_pages(doc)
+
+    assert "<!-- page 1 -->" in md
+    assert "<!-- page 2 -->" in md
+    assert "<!-- page 3 -->" in md
+
+    chunks = create_chunks(md, chunk_size=500, chunk_overlap=50)
+    assert len(chunks) >= 3
+
+    page_nums = [c.page_number for c in chunks]
+    assert 1 in page_nums
+    assert 2 in page_nums
+    assert 3 in page_nums
+
+
 if __name__ == "__main__":
     setup_module()
     test_health_check()
@@ -228,4 +254,5 @@ if __name__ == "__main__":
     test_document_lifecycle_and_reorder()
     test_diagnostics()
     test_query_endpoint()
+    test_page_number_extraction_and_chunking()
     print("ALL AUDIT & GAP TESTS PASSED SUCCESSFULLY!")
