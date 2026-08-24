@@ -64,8 +64,31 @@ def serialize_document(doc: Document) -> dict:
     file_info = get_file_type_info(doc.filename)
     formatted_size = doc.formatted_size or format_file_size(doc.file_size)
 
-    status_label = "Indexed (OCR)" if doc.status == "processed" else ("Processing..." if doc.status == "processing" else ("Failed" if doc.status == "failed" else file_info["defaultIndex"]))
-    status_type = "secondary" if doc.status in ["processed", "uploaded"] else ("error" if doc.status == "failed" else "secondary")
+    raw_status = (doc.status or "").lower()
+    if raw_status == "processed":
+        status_label = file_info["defaultIndex"]
+        status_type = "secondary"
+    elif raw_status == "processing:parsing":
+        status_label = "Parsing Document..."
+        status_type = "processing"
+    elif raw_status == "processing:chunking":
+        status_label = "Creating Chunks..."
+        status_type = "processing"
+    elif raw_status == "processing:embedding":
+        status_label = "Generating Embeddings..."
+        status_type = "processing"
+    elif raw_status == "processing:indexing":
+        status_label = "Saving to Vector DB..."
+        status_type = "processing"
+    elif raw_status.startswith("processing"):
+        status_label = "Processing Ingestion..."
+        status_type = "processing"
+    elif raw_status == "failed":
+        status_label = "Ingestion Failed"
+        status_type = "error"
+    else:
+        status_label = "Queued for Ingestion"
+        status_type = "processing"
 
     uploaded_iso = f"{doc.created_at.isoformat()}+05:30" if doc.created_at else None
 
